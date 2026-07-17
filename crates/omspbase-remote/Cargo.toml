@@ -22,6 +22,7 @@ webrtc = { version = "0.11", optional = true }
 # HTTP + WebSocket (config UI)
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["connect"] }
 tower-http = { version = "0.5", features = ["trace", "cors"] }
 
 # Config + serialization

@@ -198,3 +198,33 @@ mod imp {
 }
 
 pub use imp::Pipeline;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use omspbase_core::config::CaptureConfig;
+
+    fn test_capture() -> CaptureConfig {
+        CaptureConfig {
+            source: "test_pattern".to_string(),
+            resolution: "640x480".to_string(),
+            framerate: 30,
+            device: None,
+        }
+    }
+
+    #[test]
+    fn pipeline_new_with_test_pattern() {
+        let cfg = test_capture();
+        let result = Pipeline::new(&cfg, 640, 480, 30, 1000, "auto");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn pipeline_start_stop_no_panic() {
+        let cfg = test_capture();
+        let pipe = Pipeline::new(&cfg, 640, 480, 30, 1000, "auto").unwrap();
+        assert!(pipe.start().is_ok());
+        assert!(pipe.stop().is_ok());
+    }
+}

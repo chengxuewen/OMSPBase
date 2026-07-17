@@ -109,3 +109,92 @@ impl CoreError {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retryable_errors() {
+        assert!(CoreError::WebSocketDisconnect("lost".into()).is_retryable());
+        assert!(CoreError::IceTimeout.is_retryable());
+        assert!(CoreError::CaptureDisconnected.is_retryable());
+        assert!(CoreError::RoomFull.is_retryable());
+    }
+
+    #[test]
+    fn non_retryable_errors() {
+        assert!(!CoreError::EncoderInit("hw".into()).is_retryable());
+        assert!(!CoreError::CaptureSourceNotFound("dev".into()).is_retryable());
+        assert!(!CoreError::RelayTrackBind("bind".into()).is_retryable());
+        assert!(!CoreError::PskAuthFailed.is_retryable());
+        assert!(!CoreError::DecoderInit("dec".into()).is_retryable());
+        assert!(!CoreError::ControlHmacFailed.is_retryable());
+        assert!(!CoreError::OutOfMemory.is_retryable());
+        assert!(!CoreError::ConfigParse("bad".into()).is_retryable());
+        assert!(!CoreError::Unknown("?".into()).is_retryable());
+        assert!(!CoreError::PeerConnectionFailure("pc".into()).is_retryable());
+    }
+
+    #[test]
+    fn fatal_errors() {
+        assert!(CoreError::EncoderInit("hw".into()).is_fatal());
+        assert!(CoreError::CaptureSourceNotFound("dev".into()).is_fatal());
+        assert!(CoreError::DecoderInit("dec".into()).is_fatal());
+        assert!(CoreError::OutOfMemory.is_fatal());
+        assert!(CoreError::ConfigParse("bad".into()).is_fatal());
+    }
+
+    #[test]
+    fn non_fatal_errors() {
+        assert!(!CoreError::WebSocketDisconnect("lost".into()).is_fatal());
+        assert!(!CoreError::IceTimeout.is_fatal());
+        assert!(!CoreError::CaptureDisconnected.is_fatal());
+        assert!(!CoreError::RoomFull.is_fatal());
+        assert!(!CoreError::RelayTrackBind("bind".into()).is_fatal());
+        assert!(!CoreError::PskAuthFailed.is_fatal());
+        assert!(!CoreError::ControlHmacFailed.is_fatal());
+        assert!(!CoreError::Unknown("?".into()).is_fatal());
+        assert!(!CoreError::PeerConnectionFailure("pc".into()).is_fatal());
+    }
+
+    #[test]
+    fn display_includes_error_code_and_message() {
+        let err = CoreError::WebSocketDisconnect("timeout".into());
+        let s = err.to_string();
+        assert!(s.contains("[1001]"), "expected [1001] in '{s}'");
+        assert!(s.contains("timeout"), "expected 'timeout' in '{s}'");
+
+        let err = CoreError::OutOfMemory;
+        let s = err.to_string();
+        assert!(s.contains("[9001]"), "expected [9001] in '{s}'");
+
+        let err = CoreError::ConfigParse("invalid yaml".into());
+        let s = err.to_string();
+        assert!(s.contains("[9002]"), "expected [9002] in '{s}'");
+        assert!(s.contains("invalid yaml"), "expected 'invalid yaml' in '{s}'");
+
+        let err = CoreError::RoomFull;
+        let s = err.to_string();
+        assert!(s.contains("[4002]"), "expected [4002] in '{s}'");
+    }
+
+    #[test]
+    fn error_codes_span_expected_ranges() {
+        // Verify representative error codes across all defined ranges
+        let err_1xxx = CoreError::WebSocketDisconnect("x".into()).to_string();
+        assert!(err_1xxx.contains("[1001]"), "1xxx range");
+        let err_2xxx = CoreError::EncoderInit("x".into()).to_string();
+        assert!(err_2xxx.contains("[2001]"), "2xxx range");
+        let err_3xxx = CoreError::CaptureSourceNotFound("x".into()).to_string();
+        assert!(err_3xxx.contains("[3001]"), "3xxx range");
+        let err_4xxx = CoreError::RelayTrackBind("x".into()).to_string();
+        assert!(err_4xxx.contains("[4001]"), "4xxx range");
+        let err_5xxx = CoreError::DecoderInit("x".into()).to_string();
+        assert!(err_5xxx.contains("[5001]"), "5xxx range");
+        let err_6xxx = CoreError::ControlHmacFailed.to_string();
+        assert!(err_6xxx.contains("[6001]"), "6xxx range");
+        let err_9xxx = CoreError::Unknown("x".into()).to_string();
+        assert!(err_9xxx.contains("[9003]"), "9xxx range");
+    }
+}

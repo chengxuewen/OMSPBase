@@ -173,3 +173,177 @@ fn default_ice_timeout() -> u64 {
 fn default_render_backend() -> String {
     "auto".into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_config_roundtrip() {
+        let yaml = r#"
+server:
+  signaling_url: "ws://server:9800/ws"
+  ice_servers: ["stun:stun.example.com:3478"]
+capture:
+  source: "camera"
+  resolution: "1920x1080"
+  framerate: 60
+  device: "/dev/video0"
+encoder:
+  backend: "nvenc"
+  bitrate_kbps: 4000
+  keyframe_interval: 120
+psk: "secret123"
+webrtc:
+  ice_timeout_secs: 45
+"#;
+        let parsed: HostConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.server.signaling_url, "ws://server:9800/ws");
+        assert_eq!(parsed.server.ice_servers, vec!["stun:stun.example.com:3478"]);
+        assert_eq!(parsed.capture.source, "camera");
+        assert_eq!(parsed.capture.resolution, "1920x1080");
+        assert_eq!(parsed.capture.framerate, 60);
+        assert_eq!(parsed.capture.device.as_deref(), Some("/dev/video0"));
+        assert_eq!(parsed.encoder.backend, "nvenc");
+        assert_eq!(parsed.encoder.bitrate_kbps, 4000);
+        assert_eq!(parsed.encoder.keyframe_interval, 120);
+        assert_eq!(parsed.psk.as_deref(), Some("secret123"));
+        assert_eq!(parsed.webrtc.as_ref().unwrap().ice_timeout_secs, 45);
+
+        // serialize → parse round-trip
+        let re_serialized = serde_yaml::to_string(&parsed).unwrap();
+        let re_parsed: HostConfig = serde_yaml::from_str(&re_serialized).unwrap();
+        assert_eq!(re_parsed.server.signaling_url, parsed.server.signaling_url);
+        assert_eq!(re_parsed.capture.framerate, parsed.capture.framerate);
+    }
+
+    #[test]
+    fn server_config_roundtrip() {
+        let yaml = r#"
+listen:
+  host: "127.0.0.1"
+  port: 8080
+room_capacity: 50
+rate_limit: 200
+psk: "server-psk"
+"#;
+        let parsed: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.listen.host, "127.0.0.1");
+        assert_eq!(parsed.listen.port, 8080);
+        assert_eq!(parsed.room_capacity, 50);
+        assert_eq!(parsed.rate_limit, 200);
+        assert_eq!(parsed.psk.as_deref(), Some("server-psk"));
+
+        let re_serialized = serde_yaml::to_string(&parsed).unwrap();
+        let re_parsed: ServerConfig = serde_yaml::from_str(&re_serialized).unwrap();
+        assert_eq!(re_parsed.listen.port, parsed.listen.port);
+        assert_eq!(re_parsed.room_capacity, parsed.room_capacity);
+    }
+
+    #[test]
+    fn remote_config_roundtrip() {
+        let yaml = r#"
+server:
+  signaling_url: "ws://remote:9800/ws"
+psk: "remote-psk"
+render:
+  backend: "metal"
+"#;
+        let parsed: RemoteConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.server.signaling_url, "ws://remote:9800/ws");
+        assert_eq!(parsed.psk.as_deref(), Some("remote-psk"));
+        assert_eq!(parsed.render.as_ref().unwrap().backend, "metal");
+
+        let re_serialized = serde_yaml::to_string(&parsed).unwrap();
+        let re_parsed: RemoteConfig = serde_yaml::from_str(&re_serialized).unwrap();
+        assert_eq!(re_parsed.server.signaling_url, parsed.server.signaling_url);
+    }
+
+    #[test]
+    fn version_default() {
+        let yaml = r#"
+server:
+  signaling_url: "ws://host:9800/ws"
+capture:
+  source: "screen"
+encoder:
+  backend: "auto"
+"#;
+        let parsed: HostConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.version, 1);
+    }
+
+    #[test]
+    fn optional_psk_field() {
+        let with_psk = r#"
+server:
+  signaling_url: "ws://host:9800/ws"
+capture:
+  source: "screen"
+encoder:
+  backend: "auto"
+psk: "my-psk"
+"#;
+        let parsed: HostConfig = serde_yaml::from_str(with_psk).unwrap();
+        assert_eq!(parsed.psk.as_deref(), Some("my-psk"));
+
+        let without_psk = r#"
+server:
+  signaling_url: "ws://host:9800/ws"
+capture:
+  source: "screen"
+encoder:
+  backend: "auto"
+"#;
+        let parsed: HostConfig = serde_yaml::from_str(without_psk).unwrap();
+        assert_eq!(parsed.psk, None);
+    }
+
+    #[test]
+    fn capture_config_defaults() {
+        let yaml = r#"
+source: "test_pattern"
+"#;
+        let parsed: CaptureConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.source, "test_pattern");
+        assert_eq!(parsed.resolution, "1280x720");
+        assert_eq!(parsed.framerate, 30);
+        assert_eq!(parsed.device, None);
+    }
+
+    #[test]
+    fn encoder_config_defaults() {
+        let yaml = r#"
+backend: "software"
+"#;
+        let parsed: EncoderConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.backend, "software");
+        assert_eq!(parsed.bitrate_kbps, 2000);
+        assert_eq!(parsed.keyframe_interval, 60);
+    }
+
+    #[test]
+    fn listen_config_defaults() {
+        let yaml = r#"
+host: "192.168.1.1"
+"#;
+        let parsed: ListenConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.host, "192.168.1.1");
+        assert_eq!(parsed.port, 9800);
+    }
+
+    #[test]
+    fn server_config_defaults() {
+        let yaml = "listen: {}";
+        let parsed: ServerConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.listen.host, "0.0.0.0");
+        assert_eq!(parsed.listen.port, 9800);
+        assert_eq!(parsed.room_capacity, 10);
+        assert_eq!(parsed.rate_limit, 100);
+        assert_eq!(parsed.psk, None);
+    }
+}

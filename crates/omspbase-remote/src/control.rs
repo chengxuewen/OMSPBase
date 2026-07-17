@@ -161,3 +161,35 @@ mod tests {
         assert_eq!(sender.depth().await, 2);
     }
 }
+
+    #[test]
+    fn steering_and_brake_produce_different_tags() {
+        let sender = ControlSender::new("test-key", 30);
+        let tag_steering = sender.sign_command(&ControlCommand::Steering(10.0));
+        let tag_brake = sender.sign_command(&ControlCommand::Brake(0.5));
+        assert_ne!(tag_steering, tag_brake);
+    }
+
+    #[tokio::test]
+    async fn buffer_overflow_drops_oldest() {
+        // rate_hz 1000 avoids rate-limiting delay
+        let sender = ControlSender::new("test-key", 1000);
+        sender.send(ControlCommand::Steering(1.0)).await.unwrap();
+        sender.send(ControlCommand::Steering(2.0)).await.unwrap();
+        sender.send(ControlCommand::Steering(3.0)).await.unwrap();
+        // buffer is now full (3 commands)
+        assert_eq!(sender.depth().await, 3);
+        // 4th command should drop oldest (Steering(1.0)) and add new one
+        sender.send(ControlCommand::Steering(4.0)).await.unwrap();
+        assert_eq!(sender.depth().await, 3);
+    }
+
+    #[test]
+    fn emergency_stop_serialization_roundtrip() {
+        let bytes = command_to_bytes(&ControlCommand::EmergencyStop);
+        assert_eq!(bytes, b"emergency_stop");
+        // Verify it produces a valid HMAC tag
+        let sender = ControlSender::new("test-key", 30);
+        let tag = sender.sign_command(&ControlCommand::EmergencyStop);
+        assert_eq!(tag.len(), 8);
+    }

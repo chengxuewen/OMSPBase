@@ -1,156 +1,160 @@
-// WebSocket signaling server (axum)
+//! WebSocket signaling client — connects to omspbase-server /ws endpoint.
+//!
+//! # Protocol flow
+//! 1. Connect to `{server_url}/ws`
+//! 2. Send raw PSK as first text message
+//! 3. Wait for auth acknowledgment (`Error { code: 0 }`)
+//! 4. Send `RoomJoin { room_id, peer_role: Host }`
+//! 5. Wait for `RoomJoined { room_id, peer_id }`
+//! 6. Return split sender/receiver for SDP/ICE relay
 
-use axum::Router;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::response::IntoResponse;
-use axum::routing::get;
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::broadcast;
+use omspbase_core::error::CoreError;
+use omspbase_core::protocol::{PeerRole, SignalingMessage};
+use tokio::net::TcpStream;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
-/// JSON signaling message types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum SignalingMessage {
-    /// PSK authentication (first message required)
-    #[serde(rename = "auth")]
-    Auth { token: String },
+/// Sender half of the signaling WebSocket (for sending SDP/ICE messages).
+pub type WsSender = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
 
-    /// SDP offer
-    #[serde(rename = "offer")]
-    Offer { sdp: String },
+/// Receiver half of the signaling WebSocket (for receiving relayed messages).
+pub type WsReceiver = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
-    /// SDP answer
-    #[serde(rename = "answer")]
-    Answer { sdp: String },
-
-    /// ICE candidate
-    #[serde(rename = "ice")]
-    Ice {
-        candidate: String,
-        #[serde(rename = "sdpMid")]
-        sdp_mid: String,
-        #[serde(rename = "sdpMLineIndex")]
-        sdp_m_line_index: u16,
-    },
+/// WebSocket signaling client that connects to the omspbase-server /ws endpoint.
+pub struct SignalingClient {
+    server_url: String,
+    psk: String,
+    room_id: String,
 }
 
-/// Shared signaling state
-pub struct SignalingState {
-    /// Broadcast channel to relay messages to all connected peers
-    pub tx: broadcast::Sender<String>,
-}
-
-/// Create the signaling router at /ws
-pub fn signaling_router() -> Router {
-    let (tx, _rx) = broadcast::channel::<String>(32);
-    let state = Arc::new(SignalingState { tx });
-
-    Router::new()
-        .route("/ws", get(ws_handler))
-        .with_state(state)
-}
-
-/// Handle WebSocket upgrade
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    axum::extract::State(state): axum::extract::State<Arc<SignalingState>>,
-) -> impl IntoResponse {
-    let tx = state.tx.clone();
-    ws.on_upgrade(move |socket| handle_socket(socket, tx))
-}
-
-/// Handle a single WebSocket connection
-async fn handle_socket(socket: WebSocket, tx: broadcast::Sender<String>) {
-    let (_sender, mut receiver) = socket.split();
-    let mut authenticated = false;
-
-    // Subscribe to broadcast for relay
-    let mut rx = tx.subscribe();
-
-    // Spawn relay task: forward broadcast messages to this client
-    let mut relay_sender = _sender;
-    // ponytail: single relay task, add connection limit if throughput matters
-    let relay_handle = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if relay_sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
-            }
+impl SignalingClient {
+    /// Create a new signaling client.
+    ///
+    /// # Arguments
+    /// * `server_url` — base server URL (e.g., `ws://192.168.1.1:9800`)
+    /// * `psk` — pre-shared key for authentication
+    /// * `room_id` — room identifier to join
+    pub fn new(server_url: &str, psk: &str, room_id: &str) -> Self {
+        Self {
+            server_url: server_url.trim_end_matches('/').to_string(),
+            psk: psk.to_string(),
+            room_id: room_id.to_string(),
         }
-    });
+    }
 
-    // Process incoming messages
-    while let Some(Ok(msg)) = receiver.next().await {
-        match msg {
-            Message::Text(text) => {
-                let text_str = text.to_string();
+    /// Connect to the server, authenticate with PSK, and join the room.
+    ///
+    /// Returns the split sender/receiver on success. The caller is responsible
+    /// for sending SDP/ICE messages through the sender and reading relayed
+    /// messages from the receiver.
+    pub async fn connect(&self) -> Result<(WsSender, WsReceiver), CoreError> {
+        let url = format!("{}/ws", self.server_url);
+        let (ws_stream, _resp) = connect_async(&url).await.map_err(|e| {
+            CoreError::WebSocketDisconnect(format!("connect to {}: {}", url, e))
+        })?;
 
-                // Parse the message
-                let parsed: Result<SignalingMessage, _> = serde_json::from_str(&text_str);
-                match parsed {
-                    Ok(SignalingMessage::Auth { token }) => {
-                        // Simple PSK check: token must match expected value
-                        let expected = std::env::var("OMSPBASE_PSK")
-                            .unwrap_or_else(|_| "omspbase-dev".to_string());
-                        if token == expected {
-                            authenticated = true;
-                            tracing::info!("WebSocket client authenticated");
-                            let ack = serde_json::json!({"type": "auth_ok"});
-                            // Can't use sender after split, but we already consumed it.
-                            // Just log — client gets auth status implicitly.
-                            let _ = ack;
-                        } else {
-                            tracing::warn!("WebSocket auth failed");
-                            break; // close connection on bad auth
-                        }
+        let (mut sender, mut receiver) = ws_stream.split();
+
+        // Phase 1: PSK authentication — send raw token as first message
+        sender
+            .send(Message::Text(self.psk.clone().into()))
+            .await
+            .map_err(|e| CoreError::WebSocketDisconnect(format!("send auth: {}", e)))?;
+
+        match receiver.next().await {
+            Some(Ok(Message::Text(text))) => {
+                let msg: SignalingMessage =
+                    serde_json::from_str(&text).map_err(|e| {
+                        CoreError::ConfigParse(format!("parse auth response: {}", e))
+                    })?;
+                match msg {
+                    SignalingMessage::Error { code, .. } if code == 0 => {
+                        tracing::info!("Signaling PSK auth accepted");
                     }
-                    Ok(msg) if authenticated => {
-                        // Relay the message to all other peers
-                        let _ = tx.send(text_str);
-                        tracing::debug!("Relayed signaling message: {:?}", msg);
+                    SignalingMessage::Error { code, message } => {
+                        return Err(CoreError::Unknown(format!(
+                            "auth denied [{code}]: {message}"
+                        )));
                     }
-                    Ok(_) => {
-                        // Not authenticated — ignore non-auth messages
-                        tracing::warn!("Non-auth message before authentication, closing");
-                        break;
+                    _ => return Err(CoreError::PskAuthFailed),
+                }
+            }
+            Some(Ok(Message::Close(_))) | None => {
+                return Err(CoreError::WebSocketDisconnect(
+                    "connection closed during auth".into(),
+                ));
+            }
+            Some(Err(e)) => {
+                return Err(CoreError::WebSocketDisconnect(format!(
+                    "auth read error: {}", e
+                )));
+            }
+            _ => return Err(CoreError::PskAuthFailed),
+        }
+
+        // Phase 2: Join room
+        let join_msg = SignalingMessage::RoomJoin {
+            room_id: self.room_id.clone(),
+            peer_role: PeerRole::Host,
+        };
+        let join_json = serde_json::to_string(&join_msg).map_err(|e| {
+            CoreError::ConfigParse(format!("serialize RoomJoin: {}", e))
+        })?;
+
+        sender
+            .send(Message::Text(join_json.into()))
+            .await
+            .map_err(|e| CoreError::WebSocketDisconnect(format!("send RoomJoin: {}", e)))?;
+
+        match receiver.next().await {
+            Some(Ok(Message::Text(text))) => {
+                let msg: SignalingMessage =
+                    serde_json::from_str(&text).map_err(|e| {
+                        CoreError::ConfigParse(format!(
+                            "parse RoomJoined response: {}",
+                            e
+                        ))
+                    })?;
+                match msg {
+                    SignalingMessage::RoomJoined { .. } => {
+                        tracing::info!("Joined room '{}'", self.room_id);
                     }
-                    Err(e) => {
-                        tracing::warn!("Invalid signaling JSON: {}", e);
+                    SignalingMessage::Error { code, message } => {
+                        return Err(CoreError::Unknown(format!(
+                            "room join failed [{code}]: {message}"
+                        )));
+                    }
+                    _ => {
+                        return Err(CoreError::Unknown(
+                            "unexpected response to RoomJoin".into(),
+                        ));
                     }
                 }
             }
-            Message::Close(_) => break,
-            _ => {}
+            Some(Ok(Message::Close(_))) | None => {
+                return Err(CoreError::WebSocketDisconnect(
+                    "connection closed during room join".into(),
+                ));
+            }
+            Some(Err(e)) => {
+                return Err(CoreError::WebSocketDisconnect(format!(
+                    "RoomJoin read error: {}", e
+                )));
+            }
+            _ => {
+                return Err(CoreError::WebSocketDisconnect(
+                    "no response to RoomJoin".into(),
+                ));
+            }
         }
-    }
 
-    relay_handle.abort();
-    tracing::info!("WebSocket client disconnected");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_auth_message() {
-        let json = r#"{"type":"auth","token":"test123"}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Auth { .. }));
-    }
-
-    #[test]
-    fn parse_offer_message() {
-        let json = r#"{"type":"offer","sdp":"v=0\r\no=- ..."}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Offer { .. }));
-    }
-
-    #[test]
-    fn parse_ice_message() {
-        let json = r#"{"type":"ice","candidate":"candidate:...","sdpMid":"0","sdpMLineIndex":0}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Ice { .. }));
+        tracing::info!(
+            "Signaling client ready — connected to {}, room={}",
+            self.server_url,
+            self.room_id
+        );
+        Ok((sender, receiver))
     }
 }

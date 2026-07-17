@@ -114,3 +114,78 @@ impl RoomManager {
         // self.rooms.retain(|_, r| r.created_at.elapsed().as_secs() < timeout_secs || r.host.is_some() || r.remote.is_some());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn join_room_creates_new_room() {
+        let mgr = RoomManager::new();
+        let result = mgr.join_room("room-1", "peer-a", &PeerRole::Host);
+        assert!(result.is_ok());
+        assert_eq!(mgr.active_rooms(), 1);
+        assert_eq!(mgr.get_peer_count(), 1);
+    }
+
+    #[test]
+    fn two_peers_join_same_room() {
+        let mgr = RoomManager::new();
+        mgr.join_room("room-1", "host-1", &PeerRole::Host).unwrap();
+        mgr.join_room("room-1", "remote-1", &PeerRole::Remote).unwrap();
+        assert_eq!(mgr.active_rooms(), 1);
+        assert_eq!(mgr.get_peer_count(), 2);
+    }
+
+    #[test]
+    fn join_full_host_slot_errors() {
+        let mgr = RoomManager::new();
+        mgr.join_room("room-1", "host-1", &PeerRole::Host).unwrap();
+        let result = mgr.join_room("room-1", "host-2", &PeerRole::Host);
+        assert!(result.is_err());
+        // RoomFull is error code 4002
+    }
+
+    #[test]
+    fn join_full_remote_slot_errors() {
+        let mgr = RoomManager::new();
+        mgr.join_room("room-1", "remote-1", &PeerRole::Remote).unwrap();
+        let result = mgr.join_room("room-1", "remote-2", &PeerRole::Remote);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn leave_removes_peer() {
+        let mgr = RoomManager::new();
+        mgr.join_room("room-1", "host-1", &PeerRole::Host).unwrap();
+        mgr.join_room("room-1", "remote-1", &PeerRole::Remote).unwrap();
+        assert_eq!(mgr.get_peer_count(), 2);
+
+        mgr.leave_room("room-1", "host-1");
+        assert_eq!(mgr.get_peer_count(), 1);
+    }
+
+    #[test]
+    fn leave_last_peer_removes_room() {
+        let mgr = RoomManager::new();
+        mgr.join_room("room-1", "host-1", &PeerRole::Host).unwrap();
+        mgr.leave_room("room-1", "host-1");
+        assert_eq!(mgr.active_rooms(), 0);
+    }
+
+    #[test]
+    fn room_not_found_returns_none() {
+        let mgr = RoomManager::new();
+        let result = mgr.get_other_peer("nonexistent", "peer-a");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn get_other_peer_stub() {
+        let mgr = RoomManager::new();
+        mgr.join_room("room-1", "host-1", &PeerRole::Host).unwrap();
+        // current get_other_peer implementation is a stub returning None
+        let result = mgr.get_other_peer("room-1", "host-1");
+        assert!(result.is_none());
+    }
+}

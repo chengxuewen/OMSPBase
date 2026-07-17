@@ -1,0 +1,4 @@
+[default]
+exclude-files = ["tests/*", "*.md"]
+fail-under = 50
+output-dir = "target/tarpaulin"

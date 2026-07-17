@@ -49,6 +49,8 @@ production = ["webrtc"]
 
 [dev-dependencies]
 tempfile = "3"
+tower = "0.5"
+http = "1"
 
 [profile.release]
 opt-level = 3

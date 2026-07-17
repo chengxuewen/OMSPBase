@@ -133,3 +133,37 @@ mod tests {
         assert!(session.room_id.is_none());
     }
 }
+
+    #[test]
+    fn session_load_writes_and_reads_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+        let path_str = path.to_str().unwrap();
+
+        let state = Session {
+            id: "host-001".to_string(),
+            room_id: Some("room-1".to_string()),
+            started_at: Utc::now(),
+        };
+        std::fs::write(&path, serde_json::to_string(&state).unwrap()).unwrap();
+
+        let loaded = Session::load(Some(path_str));
+        assert_eq!(loaded.id, "host-001");
+        assert_eq!(loaded.room_id, Some("room-1".to_string()));
+    }
+
+    #[tokio::test]
+    async fn session_start_persist_spawns() {
+        let session = Session {
+            id: "host-persist-test".to_string(),
+            room_id: None,
+            started_at: Utc::now(),
+        };
+        let handle = session.start_persist();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        handle.abort();
+
+        let path = std::path::PathBuf::from("/tmp/omspbase-host-session.json");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("host-persist-test"));
+    }

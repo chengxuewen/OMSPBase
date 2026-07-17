@@ -106,3 +106,114 @@ mod tests {
         assert!(matches!(parsed, SignalingMessage::IceCandidate { .. }));
     }
 }
+
+    #[test]
+    fn roundtrip_room_joined() {
+        let msg = SignalingMessage::RoomJoined {
+            room_id: "room-42".into(),
+            peer_id: "peer-7".into(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"room_joined""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            SignalingMessage::RoomJoined { room_id, peer_id } => {
+                assert_eq!(room_id, "room-42");
+                assert_eq!(peer_id, "peer-7");
+            }
+            _ => panic!("expected RoomJoined"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_room_leave() {
+        let msg = SignalingMessage::RoomLeave {
+            room_id: "room-99".into(),
+            peer_id: "peer-3".into(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"room_leave""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            SignalingMessage::RoomLeave { room_id, peer_id } => {
+                assert_eq!(room_id, "room-99");
+                assert_eq!(peer_id, "peer-3");
+            }
+            _ => panic!("expected RoomLeave"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_sdp() {
+        let msg = SignalingMessage::Sdp {
+            room_id: "room-1".into(),
+            target: Some("peer-a".into()),
+            sdp: "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-".into(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"sdp""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            SignalingMessage::Sdp { room_id, target, sdp } => {
+                assert_eq!(room_id, "room-1");
+                assert_eq!(target.as_deref(), Some("peer-a"));
+                assert!(sdp.starts_with("v=0"));
+            }
+            _ => panic!("expected Sdp"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_sdp_without_target() {
+        let msg = SignalingMessage::Sdp {
+            room_id: "room-x".into(),
+            target: None,
+            sdp: "v=0".into(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            SignalingMessage::Sdp { target, .. } => {
+                assert!(target.is_none());
+            }
+            _ => panic!("expected Sdp"),
+        }
+    }
+
+    #[test]
+    fn peer_role_host_serde() {
+        let json = serde_json::to_string(&PeerRole::Host).unwrap();
+        assert_eq!(json, r#""host""#);
+        let parsed: PeerRole = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, PeerRole::Host);
+    }
+
+    #[test]
+    fn peer_role_remote_serde() {
+        let json = serde_json::to_string(&PeerRole::Remote).unwrap();
+        assert_eq!(json, r#""remote""#);
+        let parsed: PeerRole = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, PeerRole::Remote);
+    }
+
+    #[test]
+    fn deserialize_unknown_type() {
+        let json = r#"{"type":"unknown_kind","room_id":"x"}"#;
+        let result: Result<SignalingMessage, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "unknown type should fail deserialization");
+    }
+
+    #[test]
+    fn deserialize_missing_required_field() {
+        let json = r#"{"type":"error","message":"oops"}"#;
+        // Error variant requires both code and message
+        let result: Result<SignalingMessage, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "missing 'code' field should fail");
+    }
+
+    #[test]
+    fn deserialize_bad_peer_role() {
+        let json = r#""invalid_role""#;
+        let result: Result<PeerRole, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "invalid role should fail deserialization");
+    }

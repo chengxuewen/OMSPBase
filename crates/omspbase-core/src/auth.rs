@@ -115,3 +115,41 @@ mod tests {
         assert!(!constant_time_eq(b"abc", b"ab"));
     }
 }
+
+    #[test]
+    fn sign_different_inputs_different_tags() {
+        let auth = SimplePskAuth::new("my-key");
+        let tag1 = auth.sign(b"challenge-1");
+        let tag2 = auth.sign(b"challenge-2");
+        assert_ne!(tag1, tag2, "different challenges must produce different HMAC tags");
+    }
+
+    #[test]
+    fn sign_same_input_same_tag() {
+        let auth = SimplePskAuth::new("my-key");
+        let tag1 = auth.sign(b"same-challenge");
+        let tag2 = auth.sign(b"same-challenge");
+        assert_eq!(tag1, tag2, "same challenge must produce same HMAC tag");
+    }
+
+    #[test]
+    fn different_psk_different_tag() {
+        let auth1 = SimplePskAuth::new("key-alpha");
+        let auth2 = SimplePskAuth::new("key-beta");
+        let challenge = b"shared-challenge";
+        assert_ne!(auth1.sign(challenge), auth2.sign(challenge));
+    }
+
+    #[test]
+    fn auth_result_debug() {
+        assert_eq!(format!("{:?}", AuthResult::Success), "Success");
+        assert_eq!(format!("{:?}", AuthResult::Denied), "Denied");
+        assert_eq!(format!("{:?}", AuthResult::Expired), "Expired");
+    }
+
+    #[test]
+    fn auth_result_equality() {
+        assert_eq!(AuthResult::Success, AuthResult::Success);
+        assert_ne!(AuthResult::Success, AuthResult::Denied);
+        assert_ne!(AuthResult::Denied, AuthResult::Expired);
+    }

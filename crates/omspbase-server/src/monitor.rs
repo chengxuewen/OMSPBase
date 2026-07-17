@@ -84,3 +84,48 @@ async fn metrics_handler(State(state): State<MonitorState>) -> String {
     // Encode all metrics in Prometheus text format
     state.metrics.encode()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use http::Request;
+    use http::StatusCode;
+    use tower::util::ServiceExt;
+
+    #[tokio::test]
+    async fn health_returns_200_ok() {
+        let signaling = crate::signaling::SignalingServer::new();
+        let app = monitor_router(signaling);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn ready_returns_200() {
+        let signaling = crate::signaling::SignalingServer::new();
+        let app = monitor_router(signaling);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}

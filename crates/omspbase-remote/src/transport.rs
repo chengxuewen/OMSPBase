@@ -45,3 +45,22 @@ impl Transport {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transport_new_creates_stub() {
+        let t = Transport::new("ws://localhost:9800/ws");
+        // ponytail: verify no panic on construction
+        let _ = t;
+    }
+
+    #[tokio::test]
+    async fn transport_connect_returns_ok() {
+        let t = Transport::new("ws://localhost:9800/ws");
+        let result = t.connect().await;
+        assert!(result.is_ok());
+    }
+}

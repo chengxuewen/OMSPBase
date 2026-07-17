@@ -44,3 +44,20 @@ mod imp {
 }
 
 pub use imp::Transport;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transport_new_creates_stub() {
+        let _t = Transport::new();
+    }
+
+    #[tokio::test]
+    async fn transport_send_frame_returns_ok() {
+        let t = Transport::new();
+        let result = t.send_frame(b"test-frame-data").await;
+        assert!(result.is_ok());
+    }
+}

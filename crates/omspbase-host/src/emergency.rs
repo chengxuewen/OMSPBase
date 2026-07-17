@@ -40,3 +40,15 @@ impl EmergencyListener {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn emergency_listener_binds_port_zero() {
+        let listener = EmergencyListener::bind(0).await.unwrap();
+        let addr = listener.socket.local_addr().unwrap();
+        assert!(addr.port() > 0);
+    }
+}

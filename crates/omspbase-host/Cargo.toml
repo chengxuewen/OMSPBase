@@ -42,6 +42,8 @@ hmac = "0.12"
 sha2 = "0.10"
 
 # Async utilities
+# WebSocket client for signaling
+tokio-tungstenite = { version = "0.24", features = ["connect"] }
 futures-util = "0.3"
 
 # Time handling

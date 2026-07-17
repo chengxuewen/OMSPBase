@@ -1,10 +1,10 @@
 use std::process;
 
-mod config;
-mod monitor;
-mod relay;
-mod room;
-mod signaling;
+// Binary depends on omspbase-server lib (same package).
+use omspbase_server::config;
+use omspbase_server::monitor;
+use omspbase_server::relay;
+use omspbase_server::signaling;
 
 #[tokio::main]
 async fn main() {

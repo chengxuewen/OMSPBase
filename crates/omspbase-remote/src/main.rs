@@ -1,8 +1,8 @@
 use std::process;
-
 mod config;
 mod control;
 mod decode;
+mod signaling;
 mod transport;
 
 // ponytail: no direct CoreError use in main — errors handled via config load / pipeline API
@@ -80,14 +80,19 @@ async fn main() {
             process::exit(1);
         }
     };
-
-    // Phase 5: Connect to server signaling (transport stub)
-    let transport = transport::Transport::new(&config.server.signaling_url);
-    if let Err(e) = transport.connect().await {
-        tracing::error!("Transport connect failed: {e}");
-        process::exit(1);
-    }
-    tracing::info!("Signaling connection placeholder (psk: {psk_len} chars)", psk_len = config.psk.as_deref().unwrap_or("omspbase-dev").len());
+    // Phase 5: Connect to server signaling via WebSocket
+    let psk = config.psk.as_deref().unwrap_or("omspbase-dev").to_string();
+    let signaling = signaling::SignalingClient::new(
+        &config.server.signaling_url,
+        &psk,
+        "default",
+    );
+    tokio::spawn(async move {
+        if let Err(e) = signaling.connect().await {
+            tracing::error!("Signaling failed: {e}");
+        }
+    });
+    tracing::info!("Signaling connection initiated to {}", config.server.signaling_url);
 
     // Report ready: active_connections bumped for startup
     metrics.active_connections.inc();

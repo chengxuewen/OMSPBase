@@ -72,3 +72,71 @@ impl Default for CoreMetrics {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_metrics_encodes_valid_prometheus() {
+        let metrics = CoreMetrics::new();
+        let output = metrics.encode();
+        // Prometheus text format should have HELP and TYPE for each metric
+        assert!(output.contains("# HELP active_connections"), "missing HELP active_connections");
+        assert!(output.contains("# TYPE active_connections gauge"), "missing TYPE active_connections");
+        assert!(output.contains("# HELP relayed_bytes"), "missing HELP relayed_bytes");
+        assert!(output.contains("# TYPE relayed_bytes counter"), "missing TYPE relayed_bytes");
+        assert!(output.contains("# HELP signaling_latency_us"), "missing HELP signaling_latency_us");
+        assert!(output.contains("# TYPE signaling_latency_us gauge"), "missing TYPE signaling_latency_us");
+        assert!(output.contains("# HELP error_count"), "missing HELP error_count");
+        assert!(output.contains("# TYPE error_count counter"), "missing TYPE error_count");
+    }
+
+    #[test]
+    fn new_metrics_starts_at_zero() {
+        let metrics = CoreMetrics::new();
+        let output = metrics.encode();
+        // All metrics should start at 0
+        assert!(output.contains("active_connections 0"), "active_connections should be 0");
+        assert!(output.contains("relayed_bytes_total 0"), "relayed_bytes should be 0");
+        assert!(output.contains("signaling_latency_us 0"), "signaling_latency_us should be 0");
+        assert!(output.contains("error_count_total 0"), "error_count should be 0");
+    }
+
+    #[test]
+    fn counter_increment_reflected_in_encode() {
+        let metrics = CoreMetrics::new();
+        metrics.relayed_bytes.inc_by(1024);
+        metrics.error_count.inc_by(3);
+        let output = metrics.encode();
+        assert!(output.contains("relayed_bytes_total 1024"), "expected relayed_bytes_total 1024");
+        assert!(output.contains("error_count_total 3"), "expected error_count_total 3");
+    }
+
+    #[test]
+    fn gauge_set_reflected_in_encode() {
+        let metrics = CoreMetrics::new();
+        metrics.active_connections.set(5);
+        metrics.signaling_latency_us.set(1500);
+        let output = metrics.encode();
+        assert!(output.contains("active_connections 5"), "expected active_connections 5");
+        assert!(output.contains("signaling_latency_us 1500"), "expected signaling_latency_us 1500");
+    }
+
+    #[test]
+    fn counter_multiple_increments() {
+        let metrics = CoreMetrics::new();
+        metrics.relayed_bytes.inc_by(100);
+        metrics.relayed_bytes.inc_by(200);
+        let output = metrics.encode();
+        assert!(output.contains("relayed_bytes_total 300"), "expected relayed_bytes_total 300");
+    }
+
+    #[test]
+    fn default_impl_works() {
+        let metrics: CoreMetrics = Default::default();
+        let output = metrics.encode();
+        assert!(output.contains("# HELP active_connections"));
+        assert!(output.contains("active_connections 0"));
+    }
+}
