@@ -13,8 +13,8 @@ path = "src/main.rs"
 # Shared core crate
 omspbase-core = { path = "../omspbase-core" }
 
-# WebRTC relay (optional — same feature gate pattern as Host transport.rs)
-webrtc = { version = "0.11", optional = true }
+# WebRTC relay (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
+omspbase-webrtc = { path = "../omspbase-webrtc", optional = true }
 
 # HTTP + WebSocket
 axum = { version = "0.7", features = ["ws"] }
@@ -31,8 +31,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 prometheus-client = "0.22"
 
-# Systemd
-sd-notify = "0.4"
 
 # Async utilities
 futures-util = "0.3"
@@ -44,7 +42,7 @@ uuid = { version = "1", features = ["v4"] }
 
 [features]
 default = []
-webrtc = ["dep:webrtc"]
+webrtc = ["dep:omspbase-webrtc"]
 production = ["webrtc"]
 
 [dev-dependencies]

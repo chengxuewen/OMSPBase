@@ -158,9 +158,8 @@ mod imp {
                 .map_err(|_| CoreError::EncoderInit("failed to map buffer".into()))?;
             Ok(map.to_vec())
         }
-    }
 }
-
+}
 #[cfg(not(feature = "gstreamer"))]
 mod imp {
     use omspbase_core::config::CaptureConfig;
@@ -181,6 +180,12 @@ mod imp {
             Ok(Pipeline)
         }
 
+        /// Create a dummy pipeline for headless/E2E mode.
+        pub fn dummy() -> Self {
+            tracing::info!("Pipeline dummy (headless mode)");
+            Pipeline
+        }
+
         pub fn start(&self) -> Result<(), CoreError> {
             Ok(())
         }
@@ -196,7 +201,6 @@ mod imp {
         }
     }
 }
-
 pub use imp::Pipeline;
 
 #[cfg(test)]

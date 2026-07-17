@@ -16,8 +16,8 @@ gstreamer = { version = "0.23", optional = true }
 gstreamer-app = { version = "0.23", optional = true }
 gstreamer-video = { version = "0.23", optional = true }
 
-# WebRTC (libwebrtc via webrtc-sys) — optional on macOS
-webrtc = { version = "0.11", optional = true }
+# WebRTC (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
+omspbase-webrtc = { path = "../omspbase-webrtc", optional = true }
 
 # HTTP + WebSocket
 axum = { version = "0.7", features = ["ws"] }
@@ -34,8 +34,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 prometheus-client = "0.22"
 
-# Systemd
-sd-notify = "0.4"
 
 # Crypto (HMAC for DataChannel)
 hmac = "0.12"
@@ -52,7 +50,7 @@ chrono = { version = "0.4", features = ["serde"] }
 [features]
 default = []
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
-webrtc = ["dep:webrtc"]
+webrtc = ["dep:omspbase-webrtc"]
 production = ["gstreamer", "webrtc"]
 
 [dev-dependencies]

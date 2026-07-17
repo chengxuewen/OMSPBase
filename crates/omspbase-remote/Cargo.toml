@@ -16,8 +16,8 @@ gstreamer = { version = "0.23", optional = true }
 gstreamer-app = { version = "0.23", optional = true }
 gstreamer-video = { version = "0.23", optional = true }
 
-# WebRTC (optional)
-webrtc = { version = "0.11", optional = true }
+# WebRTC (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
+omspbase-webrtc = { path = "../omspbase-webrtc", optional = true }
 
 # HTTP + WebSocket (config UI)
 axum = { version = "0.7", features = ["ws"] }
@@ -44,7 +44,7 @@ futures-util = "0.3"
 [features]
 default = []
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
-webrtc = ["dep:webrtc"]
+webrtc = ["dep:omspbase-webrtc"]
 production = ["gstreamer", "webrtc"]
 
 [profile.release]

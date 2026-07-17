@@ -2,43 +2,40 @@ use omspbase_core::error::CoreError;
 
 #[cfg(feature = "webrtc")]
 mod imp {
-    use super::CoreError;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
-    use webrtc::api::APIBuilder;
-    use webrtc::peer_connection::configuration::RTCConfiguration;
-    use webrtc::peer_connection::RTCPeerConnection;
 
-    pub struct Relay {
-        api: webrtc::api::API,
-        sessions: Arc<Mutex<HashMap<String, RelaySession>>>,
-    }
+    use omspbase_core::error::CoreError;
+    use omspbase_webrtc::{PeerConnection, PeerConnectionFactory, PcConfig};
 
     struct RelaySession {
-        host_peer: Option<RTCPeerConnection>,
-        remote_peers: Vec<RTCPeerConnection>,
+        host_peer: Option<PeerConnection>,
+        remote_peers: Vec<PeerConnection>,
     }
 
+    pub struct Relay {
+        factory: PeerConnectionFactory,
+        sessions: Arc<Mutex<HashMap<String, RelaySession>>>,
+    }
     impl Relay {
         pub fn new() -> Self {
-            let api = APIBuilder::new().build();
-            tracing::info!("WebRTC relay initialized (libwebrtc)");
+            let factory = PeerConnectionFactory::new();
+            tracing::info!("WebRTC relay initialized (omspbase-webrtc / libwebrtc)");
             Relay {
-                api,
+                factory,
                 sessions: Arc::new(Mutex::new(HashMap::new())),
             }
         }
 
-        pub async fn register_host(
+        pub fn register_host(
             &self,
             room_id: &str,
-        ) -> Result<RTCPeerConnection, CoreError> {
-            let config = RTCConfiguration::default();
+        ) -> Result<PeerConnection, CoreError> {
+            let config = PcConfig::default();
             let pc = self
-                .api
-                .new_peer_connection(config)
-                .await
+                .factory
+                .create_peer_connection(config)
                 .map_err(|e| CoreError::PeerConnectionFailure(e.to_string()))?;
             let mut sessions = self.sessions.lock().await;
             let session = sessions
@@ -52,15 +49,14 @@ mod imp {
             Ok(pc)
         }
 
-        pub async fn register_remote(
+        pub fn register_remote(
             &self,
             room_id: &str,
-        ) -> Result<RTCPeerConnection, CoreError> {
-            let config = RTCConfiguration::default();
+        ) -> Result<PeerConnection, CoreError> {
+            let config = PcConfig::default();
             let pc = self
-                .api
-                .new_peer_connection(config)
-                .await
+                .factory
+                .create_peer_connection(config)
                 .map_err(|e| CoreError::PeerConnectionFailure(e.to_string()))?;
             let mut sessions = self.sessions.lock().await;
             let session = sessions
@@ -79,13 +75,12 @@ mod imp {
         }
 
         /// Bridge tracks: bind Host video track to Remote PC.
-        /// ponytail: stub for MVP; full track bridging needs live PeerConnections.
-        pub async fn bridge_tracks(
+        pub fn bridge_tracks(
             &self,
-            _host_pc: &RTCPeerConnection,
-            _remote_pc: &RTCPeerConnection,
+            _host_pc: &PeerConnection,
+            _remote_pc: &PeerConnection,
         ) -> Result<(), CoreError> {
-            tracing::info!("WebRTC track bridging (stub) — full implementation pending");
+            tracing::info!("WebRTC track bridging (ponytail: stub — needs live track wiring)");
             Ok(())
         }
     }

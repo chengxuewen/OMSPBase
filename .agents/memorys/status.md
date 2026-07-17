@@ -4,12 +4,12 @@
 
 ## Phase
 
-**当前**: Phase 1 MVP 实施完成。4 个 workspace crate 全部通过编译 (0 errors) 和测试 (111 passed)。
-**MVP 成果**: omspbase-core + omspbase-host + omspbase-server + omspbase-remote。信令链路 (Host→Server→Remote) 已集成。
-**测试**: cargo test --workspace: 111 passed (8 suites, 0.12s)。tarpaulin.toml fail-under=50。
+**当前**: Phase 1 微内核实施。omspbase-core 新增 Pipeline/Plugin/Broadcaster 基础设施 (3 模块, 6 测试)。webrtc-sys-backend 默认启用。
+**MVP 成果**: 5 crate workspace。omspbase-core 微内核 (PipelineEngine/PluginManager/FragmentBroadcaster) + omspbase-host/server/remote 应用 + omspbase-webrtc FFI stub。
+**测试**: 4 app crates: 117 passed (8 suites)。workspace 全量需排除 omspbase-webrtc (libwebrtc 未预编译)。
 **架构文档**: 15 篇模块文档 (含 13-server / 14-remote)。7 篇 SDD (docs/sdd/)。审计 54/58 项已应用。
 **审计**: 2026-07-17 doc-audit 完成，54/58 项修复已应用。
-**骨架**: 已填充。WebRTC/GStreamer 路径为 stub，待 Phase 2 真实集成。
+**骨架**: WebRTC/GStreamer 路径为 stub。PluginManager::create_node 返回 Phase 2 错误。
 
 **当前**: Phase 0 架构定义完成 → MVP 实施提案 ready (.sisyphus/plans/mvp-host-remote/)，骨架代码已创建 (crates/omspbase-{host,remote,server})
 
@@ -131,8 +131,9 @@ docs/doc-audit-2026-07-17.md · 54/58 项修复已应用
 
 | Crate | 模块数 | 测试数 | 行数 | 状态 |
 |-------|:------:|:------:|------|:----:|
-| omspbase-core | 5 | 41 | ~450 | ✅ |
+| omspbase-core | 8 | 47 | ~1100 | ✅
 | omspbase-host | 9 | 13 | ~600 | ✅ |
 | omspbase-server | 8 | 20 + 26(E2E) | ~650 | ✅ |
 | omspbase-remote | 8 | 11 | ~500 | ✅ |
-| **workspace total** | **30** | **111** | **~2200** | ✅ |
+| omspbase-webrtc | 5 | 0 | ~450 | 🔴 stub
+| **workspace total** | **39** | **117** | **~2800** | ✅
