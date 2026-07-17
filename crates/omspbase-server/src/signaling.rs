@@ -1,194 +1,49 @@
-// WebSocket signaling server with room management
-
+use crate::room::RoomManager;
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use omspbase_core::auth::SimplePskAuth;
+use omspbase_core::error::CoreError;
+use omspbase_core::protocol::SignalingMessage;
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
-// ── Query parameters ────────────────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-pub struct WsQuery {
-    /// Room identifier (required)
-    pub room: String,
-    /// Peer role: "host" (publisher) or "remote" (subscriber)
-    #[serde(default = "default_role")]
-    pub role: String,
-}
-
-fn default_role() -> String {
-    "remote".to_string()
-}
-
-// ── Signaling messages ──────────────────────────────────────────────────────
-
-/// JSON signaling message — enriched with peer context for routing
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum SignalingMessage {
-    /// PSK authentication (first message required if PSK is configured)
-    #[serde(rename = "auth")]
-    Auth { token: String },
-
-    /// Server confirms authentication
-    #[serde(rename = "auth_ok")]
-    AuthOk,
-
-    /// SDP offer
-    #[serde(rename = "offer")]
-    Offer { sdp: String },
-
-    /// SDP answer
-    #[serde(rename = "answer")]
-    Answer { sdp: String },
-
-    /// ICE candidate
-    #[serde(rename = "ice")]
-    Ice {
-        candidate: String,
-        #[serde(rename = "sdpMid")]
-        sdp_mid: String,
-        #[serde(rename = "sdpMLineIndex")]
-        sdp_m_line_index: u16,
-    },
-
-    /// Peer joined notification (server → clients)
-    #[serde(rename = "peer_joined")]
-    PeerJoined { role: String, id: String },
-
-    /// Peer left notification (server → clients)
-    #[serde(rename = "peer_left")]
-    PeerLeft { role: String, id: String },
-}
-
-// ── Room state ──────────────────────────────────────────────────────────────
-
-/// Per-room broadcast channel and metadata
-#[derive(Debug)]
-struct RoomState {
-    /// Broadcast all messages within this room
+struct RoomChannel {
     tx: broadcast::Sender<String>,
-    /// Count of connected hosts
-    host_count: usize,
-    /// Count of connected remotes
-    remote_count: usize,
 }
 
-impl RoomState {
+impl RoomChannel {
     fn new() -> Self {
         let (tx, _) = broadcast::channel::<String>(64);
-        RoomState {
-            tx,
-            host_count: 0,
-            remote_count: 0,
-        }
+        Self { tx }
     }
 }
 
-// ── Signaling server ────────────────────────────────────────────────────────
-
-/// Shared signaling state — manages rooms and peer connections
 #[derive(Clone)]
 pub struct SignalingServer {
-    /// Map of room_id → RoomState
-    rooms: Arc<RwLock<HashMap<String, RoomState>>>,
+    channels: Arc<dashmap::DashMap<String, RoomChannel>>,
+    pub room_manager: RoomManager,
 }
 
 impl SignalingServer {
     pub fn new() -> Self {
-        SignalingServer {
-            rooms: Arc::new(RwLock::new(HashMap::new())),
+        Self {
+            channels: Arc::new(dashmap::DashMap::new()),
+            room_manager: RoomManager::new(),
         }
     }
 
-    /// Get broadcast sender for a room, creating if absent
-    fn get_or_create_room(&self, room_id: &str) -> broadcast::Sender<String> {
-        let mut rooms = self.rooms.write().unwrap();
-        rooms
+    fn get_or_create_channel(&self, room_id: &str) -> broadcast::Sender<String> {
+        self.channels
             .entry(room_id.to_string())
-            .or_insert_with(RoomState::new)
+            .or_insert_with(RoomChannel::new)
             .tx
             .clone()
     }
-
-    /// Increment peer count for role in a room
-    fn join_room(&self, room_id: &str, role: &str) {
-        let mut rooms = self.rooms.write().unwrap();
-        let room = rooms
-            .entry(room_id.to_string())
-            .or_insert_with(RoomState::new);
-        match role {
-            "host" => room.host_count += 1,
-            _ => room.remote_count += 1,
-        }
-        tracing::info!(
-            "Room {}: {} joined (hosts={}, remotes={})",
-            room_id,
-            role,
-            room.host_count,
-            room.remote_count
-        );
-    }
-
-    /// Decrement peer count for role in a room; remove room if empty
-    fn leave_room(&self, room_id: &str, role: &str) {
-        let mut rooms = self.rooms.write().unwrap();
-        if let Some(room) = rooms.get_mut(room_id) {
-            match role {
-                "host" => room.host_count = room.host_count.saturating_sub(1),
-                _ => room.remote_count = room.remote_count.saturating_sub(1),
-            }
-            tracing::info!(
-                "Room {}: {} left (hosts={}, remotes={})",
-                room_id,
-                role,
-                room.host_count,
-                room.remote_count
-            );
-            if room.host_count == 0 && room.remote_count == 0 {
-                rooms.remove(room_id);
-                tracing::info!("Room {} removed (empty)", room_id);
-            }
-        }
-    }
-
-    /// Snapshot of active hosts for monitoring
-    pub fn active_hosts(&self) -> Vec<String> {
-        let rooms = self.rooms.read().unwrap();
-        rooms
-            .iter()
-            .filter(|(_, r)| r.host_count > 0)
-            .map(|(id, r)| format!("room={} hosts={}", id, r.host_count))
-            .collect()
-    }
-
-    /// Snapshot of active remotes for monitoring
-    pub fn active_remotes(&self) -> Vec<String> {
-        let rooms = self.rooms.read().unwrap();
-        rooms
-            .iter()
-            .filter(|(_, r)| r.remote_count > 0)
-            .map(|(id, r)| format!("room={} remotes={}", id, r.remote_count))
-            .collect()
-    }
-
-    /// Snapshot of room count, total hosts, total remotes for metrics
-    pub fn metrics_snapshot(&self) -> (usize, usize, usize) {
-        let rooms = self.rooms.read().unwrap();
-        let room_count = rooms.len();
-        let host_count = rooms.values().map(|r| r.host_count).sum();
-        let remote_count = rooms.values().map(|r| r.remote_count).sum();
-        (room_count, host_count, remote_count)
-    }
 }
-
-// ── Router ──────────────────────────────────────────────────────────────────
 
 pub fn signaling_router(server: SignalingServer) -> Router {
     Router::new()
@@ -196,98 +51,150 @@ pub fn signaling_router(server: SignalingServer) -> Router {
         .with_state(server)
 }
 
-// ── WebSocket handler ───────────────────────────────────────────────────────
-
 async fn ws_handler(
     ws: WebSocketUpgrade,
     State(server): State<SignalingServer>,
-    Query(params): Query<WsQuery>,
 ) -> impl IntoResponse {
-    let room_id = params.room;
-    let role = params.role;
-    ws.on_upgrade(move |socket| handle_socket(socket, server, room_id, role))
+    ws.on_upgrade(move |socket| handle_socket(socket, server))
 }
 
-async fn handle_socket(
-    socket: WebSocket,
-    server: SignalingServer,
-    room_id: String,
-    role: String,
-) {
+async fn handle_socket(socket: WebSocket, server: SignalingServer) {
     let (mut sender, mut receiver) = socket.split();
+    let peer_id = uuid::Uuid::new_v4().to_string();
+    tracing::info!("New connection: peer={}", peer_id);
 
-    // Get or create room broadcast channel
-    let tx = server.get_or_create_room(&room_id);
+    // PSK auth — from env var for Phase 1
+    let psk = std::env::var("OMSPBASE_PSK").ok();
+    let auth = psk.as_ref().map(|k| SimplePskAuth::new(k.as_bytes()));
+    let mut authenticated = auth.is_none();
+
+    // Phase 1: Authentication
+    if !authenticated {
+        match receiver.next().await {
+            Some(Ok(Message::Text(text))) => {
+                // ponytail: simple token-as-first-message; upgrade to challenge-response later
+                if let Some(ref a) = auth {
+                    if a.sign(peer_id.as_bytes()) == a.sign(text.as_bytes())
+                        || text == psk.as_deref().unwrap_or("")
+                    {
+                        authenticated = true;
+                        tracing::info!("Peer {} authenticated", peer_id);
+                    }
+                }
+                if !authenticated {
+                    let error = SignalingMessage::Error {
+                        code: 4003,
+                        message: "PSK authentication failed".into(),
+                    };
+                    let _ = sender
+                        .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+                        .await;
+                    return;
+                }
+            }
+            _ => {
+                let error = SignalingMessage::Error {
+                    code: 4003,
+                    message: "Authentication required".into(),
+                };
+                let _ = sender
+                    .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+                    .await;
+                return;
+            }
+        }
+        let ack = SignalingMessage::Error {
+            code: 0,
+            message: "authenticated".into(),
+        };
+        let _ = sender
+            .send(Message::Text(serde_json::to_string(&ack).unwrap().into()))
+            .await;
+    }
+
+    // Phase 2: RoomJoin
+    let (room_id, role) = loop {
+        match receiver.next().await {
+            Some(Ok(Message::Text(text))) => {
+                let text_str = text.to_string();
+                if let Ok(SignalingMessage::RoomJoin { room_id, peer_role }) =
+                    serde_json::from_str(&text_str)
+                {
+                    break (room_id, peer_role);
+                }
+            }
+            Some(Ok(Message::Close(_))) | None => return,
+            _ => continue,
+        }
+    };
+
+    // Join the room
+    match server.room_manager.join_room(&room_id, &peer_id, &role) {
+        Ok(()) => {}
+        Err(CoreError::RoomFull) => {
+            let error = SignalingMessage::Error {
+                code: 4002,
+                message: "Room is full".into(),
+            };
+            let _ = sender
+                .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+                .await;
+            return;
+        }
+        Err(e) => {
+            tracing::error!("Room join error: {}", e);
+            let error = SignalingMessage::Error {
+                code: 4001,
+                message: format!("Failed to join room: {}", e),
+            };
+            let _ = sender
+                .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+                .await;
+            return;
+        }
+    }
+
+    // Send RoomJoined ack
+    let ack = SignalingMessage::RoomJoined {
+        room_id: room_id.clone(),
+        peer_id: peer_id.clone(),
+    };
+    let _ = sender
+        .send(Message::Text(serde_json::to_string(&ack).unwrap().into()))
+        .await;
+
+    let tx = server.get_or_create_channel(&room_id);
     let mut rx = tx.subscribe();
-    server.join_room(&room_id, &role);
 
-    // Notify peers about the new connection
-    let join_msg = serde_json::to_string(&SignalingMessage::PeerJoined {
-        role: role.clone(),
-        id: room_id.clone(),
-    })
-    .unwrap();
-    let _ = tx.send(join_msg);
+    // Phase 3: Message relay
+    let relay_peer_id = peer_id.clone();
+    let relay_room = room_id.clone();
 
-    // Spawn relay task: forward room messages to this client
+    // Spawn: broadcast → this peer's sender
+    let mut relay_sender = sender;
     let relay_handle = tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg.into())).await.is_err() {
+            if relay_sender
+                .send(Message::Text(msg.into()))
+                .await
+                .is_err()
+            {
                 break;
             }
         }
     });
 
-    let expected_psk = std::env::var("OMSPBASE_PSK").ok();
-    let mut authenticated = expected_psk.is_none(); // authenticated if no PSK required
-
-    // Process incoming messages
+    // Forward: this peer's receiver → broadcast
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(text) => {
                 let text_str = text.to_string();
-
-                let parsed: Result<SignalingMessage, _> = serde_json::from_str(&text_str);
-                match parsed {
-                    Ok(SignalingMessage::Auth { token }) => {
-                        if let Some(ref psk) = expected_psk {
-                            if &token == psk {
-                                authenticated = true;
-                                tracing::info!("Client authenticated in room {}", room_id);
-                                let ack = serde_json::to_string(&SignalingMessage::AuthOk).unwrap();
-                                let _ = tx.send(ack);
-                            } else {
-                                tracing::warn!("Auth failed in room {}", room_id);
-                                break; // close connection
-                            }
-                        }
-                    }
-                    // Only relay signaling messages (offer, answer, ice) — not auth or system messages
-                    Ok(ref msg)
-                        if authenticated
-                            && matches!(
-                                msg,
-                                SignalingMessage::Offer { .. }
-                                    | SignalingMessage::Answer { .. }
-                                    | SignalingMessage::Ice { .. }
-                            ) =>
-                    {
+                if let Ok(sig_msg) = serde_json::from_str::<SignalingMessage>(&text_str) {
+                    if matches!(
+                        sig_msg,
+                        SignalingMessage::Sdp { .. } | SignalingMessage::IceCandidate { .. }
+                    ) {
                         let _ = tx.send(text_str);
-                        tracing::debug!(
-                            "Relayed {} message in room {}",
-                            message_type_name(msg),
-                            room_id
-                        );
-                    }
-                    Ok(_) if authenticated => {
-                        // Ignore system message types relayed back by the broadcast
-                    }
-                    Ok(_) => {
-                        tracing::warn!("Non-auth message before authentication in room {}", room_id);
-                        break;
-                    }
-                    Err(e) => {
-                        tracing::warn!("Invalid signaling JSON in room {}: {}", room_id, e);
                     }
                 }
             }
@@ -297,100 +204,17 @@ async fn handle_socket(
     }
 
     relay_handle.abort();
-    server.leave_room(&room_id, &role);
+    server.room_manager.leave_room(&relay_room, &relay_peer_id);
 
-    // Notify peers about disconnection
-    let leave_msg = serde_json::to_string(&SignalingMessage::PeerLeft {
-        role: role.clone(),
-        id: room_id.clone(),
-    })
-    .unwrap();
-    let _ = tx.send(leave_msg);
+    let leave_msg = SignalingMessage::RoomLeave {
+        room_id: relay_room.clone(),
+        peer_id: relay_peer_id.clone(),
+    };
+    let _ = tx.send(serde_json::to_string(&leave_msg).unwrap());
 
     tracing::info!(
-        "Client disconnected from room {} (role: {})",
-        room_id,
-        role
+        "Peer {} disconnected from room {}",
+        relay_peer_id,
+        relay_room
     );
-}
-
-fn message_type_name(msg: &SignalingMessage) -> &'static str {
-    match msg {
-        SignalingMessage::Offer { .. } => "offer",
-        SignalingMessage::Answer { .. } => "answer",
-        SignalingMessage::Ice { .. } => "ice",
-        _ => "other",
-    }
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_auth_message() {
-        let json = r#"{"type":"auth","token":"test123"}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Auth { .. }));
-    }
-
-    #[test]
-    fn parse_offer_message() {
-        let json = r#"{"type":"offer","sdp":"v=0\r\no=- ..."}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Offer { .. }));
-    }
-
-    #[test]
-    fn parse_answer_message() {
-        let json = r#"{"type":"answer","sdp":"v=0\r\no=- ..."}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Answer { .. }));
-    }
-
-    #[test]
-    fn parse_ice_message() {
-        let json =
-            r#"{"type":"ice","candidate":"candidate:...","sdpMid":"0","sdpMLineIndex":0}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::Ice { .. }));
-    }
-
-    #[test]
-    fn parse_peer_joined_message() {
-        let json = r#"{"type":"peer_joined","role":"host","id":"room-a"}"#;
-        let msg: SignalingMessage = serde_json::from_str(json).unwrap();
-        assert!(matches!(msg, SignalingMessage::PeerJoined { .. }));
-    }
-
-    #[test]
-    fn signaling_server_new_creates_empty_rooms() {
-        let server = SignalingServer::new();
-        assert!(server.active_hosts().is_empty());
-        assert!(server.active_remotes().is_empty());
-    }
-
-    #[test]
-    fn join_and_leave_host() {
-        let server = SignalingServer::new();
-        server.join_room("room-a", "host");
-        assert_eq!(server.active_hosts().len(), 1);
-        assert!(server.active_hosts()[0].contains("room-a"));
-        server.leave_room("room-a", "host");
-        assert!(server.active_hosts().is_empty());
-        assert!(server.active_remotes().is_empty());
-    }
-
-    #[test]
-    fn multiple_remotes_in_room() {
-        let server = SignalingServer::new();
-        server.join_room("room-a", "remote");
-        server.join_room("room-a", "remote");
-        server.join_room("room-a", "remote");
-        assert!(server.active_remotes()[0].contains("remotes=3"));
-        server.leave_room("room-a", "remote");
-        assert!(server.active_remotes()[0].contains("remotes=2"));
-    }
 }

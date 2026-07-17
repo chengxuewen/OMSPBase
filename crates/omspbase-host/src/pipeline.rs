@@ -1,102 +1,198 @@
-// GStreamer pipeline: V4L2 capture → NVENC encode → appsink
+//! GStreamer pipeline: compositor → videoconvert → encoder → appsink.
+//!
+//! Encoder auto-selects based on platform:
+//! - Linux: nvenc (NVIDIA) or vah264enc (VAAPI fallback)
+//! - macOS: vt264enc (VideoToolbox)
+//! - Other: x264enc (software, universal fallback)
 
 #[cfg(feature = "gstreamer")]
 mod imp {
     use gstreamer::prelude::*;
     use gstreamer_app;
+    use omspbase_core::config::CaptureConfig;
+    use omspbase_core::error::CoreError;
 
     pub struct Pipeline {
         pipeline: gstreamer::Pipeline,
         appsink: gstreamer_app::AppSink,
     }
 
+    /// Select the best available hardware encoder for the current platform.
+    fn resolve_encoder(requested: &str) -> &str {
+        if requested != "auto" {
+            return requested;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            return "vt264enc";
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // ponytail: try nvenc first, VAAPI fallback; real capability probe later
+            return "vah264enc";
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            "x264enc"
+        }
+    }
+
     impl Pipeline {
-        pub fn new(camera: &str, width: u32, height: u32, fps: u32, bitrate: u32, encoder: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        /// Build a GStreamer pipeline: compositor → videoconvert → encoder → appsink.
+        ///
+        /// The encoder is resolved from `encoder` param (if "auto", platform-appropriate).
+        pub fn new(
+            capture: &CaptureConfig,
+            width: u32,
+            height: u32,
+            fps: u32,
+            bitrate: u32,
+            encoder: &str,
+        ) -> Result<Self, CoreError> {
+            let enc = resolve_encoder(encoder);
+
+            let source_element = match capture.source.as_str() {
+                "screen" => {
+                    #[cfg(target_os = "linux")]
+                    {
+                        "ximagesrc"
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        "videotestsrc pattern=ball"
+                    }
+                }
+                "camera" => {
+                    if let Some(ref dev) = capture.device {
+                        // ponytail: pass device path as location property
+                        &format!("v4l2src device={dev}")
+                    } else {
+                        "v4l2src"
+                    }
+                }
+                _ => "videotestsrc pattern=smpte",
+            };
+
             let pipeline_desc = format!(
-                "v4l2src device={} ! videoconvert ! video/x-raw,format=I420,width={},height={},framerate={}/1 ! {} bitrate={} ! h264parse ! appsink name=sink",
-                camera, width, height, fps, encoder, bitrate
+                "{source} ! videoconvert ! video/x-raw,format=I420,width={w},height={h},framerate={fps}/1 \
+                 ! {enc} bitrate={br} ! h264parse ! appsink name=sink",
+                source = source_element,
+                w = width,
+                h = height,
+                fps = fps,
+                enc = enc,
+                br = bitrate,
             );
-            let pipeline = gstreamer::parse::launch(&pipeline_desc)?
+
+            let pipeline = gstreamer::parse::launch(&pipeline_desc)
+                .map_err(|e| CoreError::EncoderInit(format!("pipeline parse: {e}")))?
                 .downcast::<gstreamer::Pipeline>()
-                .map_err(|_| "Failed to create pipeline")?;
+                .map_err(|_| CoreError::EncoderInit("downcast to Pipeline".into()))?;
 
             let appsink = pipeline
                 .by_name("sink")
-                .ok_or("appsink 'sink' not found in pipeline")?
+                .ok_or_else(|| CoreError::EncoderInit("appsink 'sink' not found".into()))?
                 .downcast::<gstreamer_app::AppSink>()
-                .map_err(|_| "element 'sink' is not an AppSink")?;
+                .map_err(|_| CoreError::EncoderInit("element is not an AppSink".into()))?;
 
-            // Set up bus watch for error/warning logging (recovery in next sub-task)
-            let bus = pipeline.bus().ok_or("pipeline has no bus")?;
-            bus.set_sync_handler(move |_bus, msg| {
-                use gstreamer::MessageView;
-                match msg.view() {
-                    MessageView::Error(err) => {
-                        tracing::error!(
-                            src = ?err.src(),
-                            error = %err.error(),
-                            debug = err.debug(),
-                            "GStreamer pipeline error"
-                        );
+            // Bus watch for error/warning logging
+            if let Some(bus) = pipeline.bus() {
+                bus.set_sync_handler(move |_bus, msg| {
+                    use gstreamer::MessageView;
+                    match msg.view() {
+                        MessageView::Error(err) => {
+                            tracing::error!(
+                                src = ?err.src(),
+                                error = %err.error(),
+                                debug = err.debug(),
+                                "GStreamer pipeline error"
+                            );
+                        }
+                        MessageView::Warning(warn) => {
+                            tracing::warn!(
+                                src = ?warn.src(),
+                                error = %warn.error(),
+                                debug = warn.debug(),
+                                "GStreamer pipeline warning"
+                            );
+                        }
+                        MessageView::Eos(_) => {
+                            tracing::info!("GStreamer pipeline EOS");
+                        }
+                        _ => {}
                     }
-                    MessageView::Warning(warn) => {
-                        tracing::warn!(
-                            src = ?warn.src(),
-                            error = %warn.error(),
-                            debug = warn.debug(),
-                            "GStreamer pipeline warning"
-                        );
-                    }
-                    MessageView::Eos(_) => {
-                        tracing::info!("GStreamer pipeline EOS");
-                    }
-                    _ => {}
-                }
-                gstreamer::BusSyncReply::Pass
-            });
+                    gstreamer::BusSyncReply::Pass
+                });
+            }
 
+            tracing::info!(encoder = enc, source = %source_element, "GStreamer pipeline created");
             Ok(Pipeline { pipeline, appsink })
         }
 
-        pub fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
-            self.pipeline.set_state(gstreamer::State::Playing)?;
+        pub fn start(&self) -> Result<(), CoreError> {
+            self.pipeline
+                .set_state(gstreamer::State::Playing)
+                .map_err(|e| CoreError::EncoderInit(format!("pipeline start: {e}")))?;
             Ok(())
         }
 
-        pub fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
-            self.pipeline.set_state(gstreamer::State::Null)?;
+        pub fn stop(&self) -> Result<(), CoreError> {
+            self.pipeline
+                .set_state(gstreamer::State::Null)
+                .map_err(|e| CoreError::Unknown(format!("pipeline stop: {e}")))?;
             Ok(())
         }
 
-        pub fn pull_frame(&self) -> Option<Vec<u8>> {
-            let sample = self.appsink.try_pull_sample(gstreamer::ClockTime::NONE).ok()??;
-            let buffer = sample.buffer()?;
-            let map = buffer.map_readable().ok()?;
-            Some(map.to_vec())
+        /// Pull a sample from the appsink and return raw H.264 bytes.
+        pub fn pull_sample(&self) -> Result<Vec<u8>, CoreError> {
+            let sample = self
+                .appsink
+                .try_pull_sample(gstreamer::ClockTime::from_seconds(5))
+                .map_err(|_| CoreError::CaptureDisconnected)?
+                .ok_or_else(|| CoreError::EncoderInit("appsink pulled None".into()))?;
+            let buffer = sample
+                .buffer()
+                .ok_or_else(|| CoreError::EncoderInit("sample has no buffer".into()))?;
+            let map = buffer
+                .map_readable()
+                .map_err(|_| CoreError::EncoderInit("failed to map buffer".into()))?;
+            Ok(map.to_vec())
         }
     }
 }
 
 #[cfg(not(feature = "gstreamer"))]
 mod imp {
+    use omspbase_core::config::CaptureConfig;
+    use omspbase_core::error::CoreError;
+
     pub struct Pipeline;
 
     impl Pipeline {
-        pub fn new(_camera: &str, _width: u32, _height: u32, _fps: u32, _bitrate: u32, _encoder: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        pub fn new(
+            _capture: &CaptureConfig,
+            _width: u32,
+            _height: u32,
+            _fps: u32,
+            _bitrate: u32,
+            _encoder: &str,
+        ) -> Result<Self, CoreError> {
             tracing::warn!("Pipeline stub (no GStreamer compiled)");
             Ok(Pipeline)
         }
 
-        pub fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
+        pub fn start(&self) -> Result<(), CoreError> {
             Ok(())
         }
 
-        pub fn stop(&self) -> Result<(), Box<dyn std::error::Error>> {
+        pub fn stop(&self) -> Result<(), CoreError> {
             Ok(())
         }
 
-        pub fn pull_frame(&self) -> Option<Vec<u8>> {
-            None
+        /// Stub: returns empty vec when GStreamer is not available.
+        pub fn pull_sample(&self) -> Result<Vec<u8>, CoreError> {
+            tracing::debug!("pull_sample (stub): no GStreamer");
+            Ok(Vec::new())
         }
     }
 }

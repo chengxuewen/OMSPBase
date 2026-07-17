@@ -3,6 +3,7 @@ use std::process;
 mod config;
 mod monitor;
 mod relay;
+mod room;
 mod signaling;
 
 #[tokio::main]
@@ -30,7 +31,7 @@ async fn main() {
 
     let config = match config::load(&config_path) {
         Ok(c) => {
-            tracing::info!("Config loaded: {:?}", c);
+            tracing::info!("Config loaded from {}", config_path);
             c
         }
         Err(e) => {
@@ -53,14 +54,10 @@ async fn main() {
         .merge(signaling_router)
         .merge(monitor_router);
 
-    // Determine bind address
-    let bind_addr = config
-        .web
-        .as_ref()
-        .map(|w| w.bind.as_str())
-        .unwrap_or("0.0.0.0:9801");
+    // Bind address from omspbase_core config
+    let bind_addr = format!("{}:{}", config.listen.host, config.listen.port);
 
-    let listener = match tokio::net::TcpListener::bind(bind_addr).await {
+    let listener = match tokio::net::TcpListener::bind(&bind_addr).await {
         Ok(l) => {
             tracing::info!("Listening on {}", bind_addr);
             l
@@ -71,9 +68,9 @@ async fn main() {
         }
     };
 
-    // Notify systemd we're ready
+    // Notify systemd
     let _ = sd_notify::notify(true, &[sd_notify::NotifyState::Ready]);
-    tracing::info!("Server {} ready", config.server.id);
+    tracing::info!("Server ready on {}", bind_addr);
 
     // Run server with graceful shutdown
     let server = axum::serve(listener, app).with_graceful_shutdown(async {

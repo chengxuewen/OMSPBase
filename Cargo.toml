@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/omspbase-host", "crates/omspbase-remote", "crates/omspbase-server"]
+members = ["crates/omspbase-host", "crates/omspbase-remote", "crates/omspbase-server", "crates/omspbase-core"]
 resolver = "3"
 
 [workspace.package]

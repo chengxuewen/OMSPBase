@@ -1,172 +1,135 @@
-// Session persistence + crash recovery
-// Writes session_state.json every 10s, loads on startup with staleness check
+//! Session state persistence — write to disk every 10s, load on startup if fresh.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime};
-use tokio::sync::Mutex;
+use std::time::Duration;
 use tokio::time;
 
-/// Session state persisted to disk
+/// Session state serialized to `/tmp/omspbase-host-session.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionState {
-    pub room_id: Option<String>,
-    pub peer_fingerprint: Option<String>,
-    /// Last known ICE candidates (JSON strings)
-    #[serde(default)]
-    pub last_ice_candidates: Vec<String>,
-}
-
-impl Default for SessionState {
-    fn default() -> Self {
-        SessionState {
-            room_id: None,
-            peer_fingerprint: None,
-            last_ice_candidates: Vec::new(),
-        }
-    }
-}
-
-/// Shared session handle — updated by app, persisted by background task
 pub struct Session {
-    state: Arc<Mutex<SessionState>>,
-    path: PathBuf,
+    /// Unique session identifier (host ID from config).
+    pub id: String,
+    /// Room the host is currently publishing to.
+    pub room_id: Option<String>,
+    /// Session start timestamp.
+    pub started_at: DateTime<Utc>,
 }
 
 impl Session {
-    /// Load session from file if stale < 60s, otherwise return fresh
-    pub fn load(path: Option<&str>) -> Self {
-        let path = PathBuf::from(path.unwrap_or("session_state.json"));
+    /// Load session from `state_path` if the file is < 60s stale.
+    /// Returns a fresh session otherwise.
+    pub fn load(state_path: Option<&str>) -> Self {
+        let path = PathBuf::from(
+            state_path.unwrap_or("/tmp/omspbase-host-session.json"),
+        );
 
-        let state = match std::fs::read_to_string(&path) {
-            Ok(contents) => {
-                match serde_json::from_str::<SessionState>(&contents) {
-                    Ok(s) => {
-                        // Check file modification time for staleness
-                        if let Ok(meta) = std::fs::metadata(&path) {
-                            if let Ok(modified) = meta.modified() {
-                                let age = SystemTime::now()
-                                    .duration_since(modified)
-                                    .unwrap_or(Duration::from_secs(999));
-                                if age < Duration::from_secs(60) {
-                                    tracing::info!(
-                                        "Loaded session: room={:?}, age={}s",
-                                        s.room_id,
-                                        age.as_secs()
-                                    );
-                                    s
-                                } else {
-                                    tracing::info!(
-                                        "Session state stale ({}s > 60s), starting fresh",
-                                        age.as_secs()
-                                    );
-                                    SessionState::default()
-                                }
-                            } else {
-                                SessionState::default()
-                            }
-                        } else {
-                            SessionState::default()
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to parse session state: {}, starting fresh", e);
-                        SessionState::default()
-                    }
-                }
-            }
+        let _fallback = Self {
+            id: "unknown".to_string(),
+            room_id: None,
+            started_at: Utc::now(),
+        };
+        let contents = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
             Err(_) => {
                 tracing::info!("No existing session state, starting fresh");
-                SessionState::default()
+                return new_session();
             }
         };
 
-        Session {
-            state: Arc::new(Mutex::new(state)),
-            path,
+        let state: Self = match serde_json::from_str(&contents) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("Failed to parse session state: {e}, starting fresh");
+                return new_session();
+            }
+        };
+
+        // Check staleness
+        match std::fs::metadata(&path) {
+            Ok(meta) => match meta.modified() {
+                Ok(modified) => {
+                    let age = std::time::SystemTime::now()
+                        .duration_since(modified)
+                        .unwrap_or(Duration::from_secs(999));
+                    if age < Duration::from_secs(60) {
+                        tracing::info!(
+                            "Loaded session: id={}, room={:?}, age={}s",
+                            state.id,
+                            state.room_id,
+                            age.as_secs()
+                        );
+                        return state;
+                    }
+                    tracing::info!(
+                        "Session state stale ({}s > 60s), starting fresh",
+                        age.as_secs()
+                    );
+                }
+                Err(_) => {}
+            },
+            Err(_) => {}
         }
+        new_session()
     }
 
-    /// Get a mutable reference to update state (caller locks briefly)
-    pub async fn update<F>(&self, f: F)
-    where
-        F: FnOnce(&mut SessionState),
-    {
-        let mut state = self.state.lock().await;
-        f(&mut state);
-    }
-
-    /// Start background persistence task — writes every 10 seconds
+    /// Start background persistence — writes session JSON every 10 seconds.
     pub fn start_persist(&self) -> tokio::task::JoinHandle<()> {
-        let state = self.state.clone();
-        let path = self.path.clone();
+        let path = PathBuf::from("/tmp/omspbase-host-session.json");
+        let state = self.clone();
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs(10));
             loop {
                 interval.tick().await;
-                let current = state.lock().await;
-                let content = serde_json::to_string_pretty(&*current)
+                let content = serde_json::to_string_pretty(&state)
                     .unwrap_or_else(|e| {
-                        tracing::error!("Failed to serialize session: {}", e);
+                        tracing::error!("Failed to serialize session: {e}");
                         "{}".to_string()
                     });
                 // ponytail: atomic write via temp file + rename
                 let tmp_path = path.with_extension("tmp");
                 if let Err(e) = std::fs::write(&tmp_path, &content) {
-                    tracing::error!("Failed to write session temp file: {}", e);
+                    tracing::error!("Failed to write session temp file: {e}");
                     continue;
                 }
                 if let Err(e) = std::fs::rename(&tmp_path, &path) {
-                    tracing::error!("Failed to rename session file: {}", e);
+                    tracing::error!("Failed to rename session file: {e}");
                 }
             }
         })
     }
 }
 
+fn new_session() -> Session {
+    Session {
+        id: "unknown".to_string(),
+        room_id: None,
+        started_at: Utc::now(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn session_serialization() {
-        let state = SessionState {
+        let state = Session {
+            id: "host-001".to_string(),
             room_id: Some("room-1".to_string()),
-            peer_fingerprint: Some("SHA256:abc123".to_string()),
-            last_ice_candidates: vec!["candidate:1".to_string(), "candidate:2".to_string()],
+            started_at: Utc::now(),
         };
         let json = serde_json::to_string(&state).unwrap();
-        let parsed: SessionState = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.room_id.unwrap(), "room-1");
-        assert_eq!(parsed.peer_fingerprint.unwrap(), "SHA256:abc123");
-        assert_eq!(parsed.last_ice_candidates.len(), 2);
+        let parsed: Session = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, "host-001");
+        assert_eq!(parsed.room_id, Some("room-1".to_string()));
     }
 
     #[test]
-    fn session_default_is_empty() {
-        let state = SessionState::default();
-        assert!(state.room_id.is_none());
-        assert!(state.peer_fingerprint.is_none());
-        assert!(state.last_ice_candidates.is_empty());
-    }
-
-    #[tokio::test]
-    async fn session_update_works() {
-        let tmp = NamedTempFile::new().unwrap();
-        let session = Session {
-            state: Arc::new(Mutex::new(SessionState::default())),
-            path: tmp.path().to_path_buf(),
-        };
-
-        session.update(|s| {
-            s.room_id = Some("room-x".to_string());
-            s.peer_fingerprint = Some("fp-x".to_string());
-        }).await;
-
-        let state = session.state.lock().await;
-        assert_eq!(state.room_id.as_deref(), Some("room-x"));
+    fn session_load_missing_file_returns_fresh() {
+        let session = Session::load(Some("/tmp/nonexistent-omspbase-session.json"));
+        assert_eq!(session.id, "unknown");
+        assert!(session.room_id.is_none());
     }
 }

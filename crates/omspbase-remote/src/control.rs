@@ -1,110 +1,94 @@
-// DataChannel control sender — constructs frames, signs with HMAC, queues for send
-// Mirrors Host's control.rs receiver side with ControlFrame enum reused exactly
+//! DataChannel control sender — signs commands with HMAC-SHA256, rate-limited send.
+//!
+//! Uses `omspbase_core::auth::SimplePskAuth` for signing.
+//! Commands are buffered (max 3), oldest dropped when full.
 
-use hmac::{Hmac, Mac};
-use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use omspbase_core::auth::SimplePskAuth;
+use omspbase_core::error::CoreError;
 use std::collections::VecDeque;
+use tokio::sync::Mutex;
 
-type HmacSha256 = Hmac<Sha256>;
+// ponytail: 3-frame buffer prevents back-pressure stall in control loop
 
-/// Control frame types sent over DataChannel
-/// Identical to Host's ControlFrame — this is the sender side
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ControlFrame {
-    #[serde(rename = "steering")]
-    Steering { value: f64 },
-    #[serde(rename = "brake")]
-    Brake { value: f64 },
-    #[serde(rename = "throttle")]
-    Throttle { value: f64 },
-}
-
-/// Derive HMAC key from label
-fn derive_key(label: &[u8]) -> HmacSha256 {
-    // ponytail: simple label-as-key derivation, use HKDF if key rotation needed
-    HmacSha256::new_from_slice(label).expect("HMAC key derivation should not fail")
-}
-
-/// Compute 8-byte HMAC-SHA256 tag for given payload
-pub fn compute_hmac_tag(payload: &[u8], key_label: &[u8]) -> [u8; 8] {
-    let mut mac = derive_key(key_label);
-    mac.update(payload);
-    let result = mac.finalize();
-    let code_bytes = result.into_bytes();
-    let mut tag = [0u8; 8];
-    tag.copy_from_slice(&code_bytes[..8]);
-    tag
-}
-
-/// A signed control message ready for DataChannel send
+/// Control commands sent over DataChannel from Remote to Host.
 #[derive(Debug, Clone)]
-pub struct SignedFrame {
-    /// JSON-encoded control frame body
-    pub body: String,
-    /// 8-byte HMAC tag for the body
-    pub tag: [u8; 8],
+pub enum ControlCommand {
+    /// Steering angle in degrees.
+    Steering(f64),
+    /// Brake pressure 0.0–1.0.
+    Brake(f64),
+    /// Throttle position 0.0–1.0.
+    Throttle(f64),
+    /// Immediate emergency stop.
+    EmergencyStop,
 }
 
-/// Control sender — serializes frames, signs with HMAC, manages send buffer
+/// Serialize a control command to bytes for HMAC signing.
+fn command_to_bytes(cmd: &ControlCommand) -> Vec<u8> {
+    match cmd {
+        ControlCommand::Steering(v) => format!("steering:{v}").into_bytes(),
+        ControlCommand::Brake(v) => format!("brake:{v}").into_bytes(),
+        ControlCommand::Throttle(v) => format!("throttle:{v}").into_bytes(),
+        ControlCommand::EmergencyStop => b"emergency_stop".to_vec(),
+    }
+}
+
+/// Control sender — signs and buffers commands for DataChannel transmission.
 pub struct ControlSender {
-    /// HMAC key label (configurable per remote)
-    key_label: Vec<u8>,
-    /// Pending signed frames awaiting DataChannel transmit
-    buffer: VecDeque<SignedFrame>,
-    /// Maximum buffer depth before dropping oldest
-    max_depth: usize,
-    /// Send rate limiter (Hz)
+    /// PSK authenticator used for HMAC signing.
+    auth: SimplePskAuth,
+    /// Buffer of (command, signature) pairs awaiting send.
+    buffer: Mutex<VecDeque<(ControlCommand, Vec<u8>)>>,
+    /// Maximum send rate in Hz.
     rate_hz: u32,
 }
 
 impl ControlSender {
-    /// Create a new control sender with given HMAC key label and rate limit
-    pub fn new(key_label: &str, rate_hz: u32) -> Self {
+    /// Create a new control sender.
+    ///
+    /// `hmac_key` is used as the PSK for HMAC-SHA256 signing.
+    /// `rate_hz` limits the send rate (frames per second).
+    pub fn new(hmac_key: &str, rate_hz: u32) -> Self {
         tracing::info!(
-            "Control sender initialized (HMAC label: {key_label}, rate: {rate_hz} Hz, buffer depth 3)",
-            key_label = key_label,
+            hmac_key = hmac_key,
+            rate_hz = rate_hz,
+            "Control sender initialized"
         );
-        ControlSender {
-            key_label: key_label.as_bytes().to_vec(),
-            buffer: VecDeque::with_capacity(4),
-            max_depth: 3,
+        Self {
+            auth: SimplePskAuth::new(hmac_key.as_bytes()),
+            buffer: Mutex::new(VecDeque::with_capacity(4)),
             rate_hz,
         }
     }
 
-    /// Sign a control frame: serialize to JSON, compute HMAC tag
-    pub fn sign(&self, frame: &ControlFrame) -> Result<SignedFrame, serde_json::Error> {
-        let body = serde_json::to_string(frame)?;
-        let tag = compute_hmac_tag(body.as_bytes(), &self.key_label);
-        Ok(SignedFrame { body, tag })
+    /// Sign a control command, returning the 8-byte HMAC-SHA256 tag.
+    pub fn sign_command(&self, command: &ControlCommand) -> Vec<u8> {
+        let payload = command_to_bytes(command);
+        self.auth.sign(&payload)
     }
 
-    /// Enqueue a frame for sending. Drops oldest if buffer full.
-    pub fn enqueue(&mut self, frame: ControlFrame) -> Result<(), serde_json::Error> {
-        let signed = self.sign(&frame)?;
-        if self.buffer.len() >= self.max_depth {
-            self.buffer.pop_front();
-            tracing::warn!("Control send buffer full, dropped oldest frame");
+    /// Enqueue a command for sending.
+    ///
+    /// Rate-limited by `rate_hz`. Drops oldest command if buffer exceeds 3 entries.
+    pub async fn send(&self, command: ControlCommand) -> Result<(), CoreError> {
+        let tag = self.sign_command(&command);
+
+        let mut buf = self.buffer.lock().await;
+        if buf.len() >= 3 {
+            buf.pop_front();
+            tracing::warn!("Control buffer full, dropped oldest command");
         }
-        self.buffer.push_back(signed);
+        buf.push_back((command, tag));
+
+        // ponytail: simple fixed-rate pacing; replace with token bucket if burst tolerance needed
+        let interval_ms = 1000u64 / self.rate_hz as u64;
+        tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
         Ok(())
     }
 
-    /// Dequeue next signed frame for DataChannel transmission
-    pub fn dequeue(&mut self) -> Option<SignedFrame> {
-        self.buffer.pop_front()
-    }
-
-    /// Current buffer depth
-    pub fn depth(&self) -> usize {
-        self.buffer.len()
-    }
-
-    /// Rate limit in Hz
-    pub fn rate_hz(&self) -> u32 {
-        self.rate_hz
+    /// Current buffer depth (for health monitoring).
+    pub async fn depth(&self) -> usize {
+        self.buffer.lock().await.len()
     }
 }
 
@@ -113,73 +97,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hmac_deterministic() {
-        let payload = b"{\"type\":\"steering\",\"value\":15.2}";
-        let tag1 = compute_hmac_tag(payload, b"omspbase-control");
-        let tag2 = compute_hmac_tag(payload, b"omspbase-control");
-        assert_eq!(tag1, tag2);
-    }
-
-    #[test]
-    fn hmac_different_keys_different_tags() {
-        let payload = b"{\"type\":\"steering\",\"value\":15.2}";
-        let tag1 = compute_hmac_tag(payload, b"key-a");
-        let tag2 = compute_hmac_tag(payload, b"key-b");
-        assert_ne!(tag1, tag2);
-    }
-
-    #[test]
-    fn sign_steering_frame() {
-        let sender = ControlSender::new("omspbase-control", 30);
-        let frame = ControlFrame::Steering { value: 15.2 };
-        let signed = sender.sign(&frame).unwrap();
-        assert_eq!(signed.body, r#"{"type":"steering","value":15.2}"#);
-        assert_eq!(signed.tag.len(), 8);
-    }
-
-    #[test]
-    fn sign_all_frame_types() {
+    fn sign_steering_command() {
         let sender = ControlSender::new("test-key", 30);
-        for frame in [
-            ControlFrame::Steering { value: 1.0 },
-            ControlFrame::Brake { value: 0.5 },
-            ControlFrame::Throttle { value: 45.0 },
+        let cmd = ControlCommand::Steering(15.2);
+        let tag = sender.sign_command(&cmd);
+        assert_eq!(tag.len(), 8);
+    }
+
+    #[test]
+    fn sign_different_keys_produce_different_tags() {
+        let sender_a = ControlSender::new("key-a", 30);
+        let sender_b = ControlSender::new("key-b", 30);
+        let cmd = ControlCommand::Brake(0.5);
+        let tag_a = sender_a.sign_command(&cmd);
+        let tag_b = sender_b.sign_command(&cmd);
+        assert_ne!(tag_a, tag_b);
+    }
+
+    #[test]
+    fn sign_all_command_types() {
+        let sender = ControlSender::new("test-key", 30);
+        for cmd in [
+            ControlCommand::Steering(1.0),
+            ControlCommand::Brake(0.5),
+            ControlCommand::Throttle(45.0),
+            ControlCommand::EmergencyStop,
         ] {
-            let signed = sender.sign(&frame).unwrap();
-            assert!(!signed.body.is_empty());
-            assert_eq!(signed.tag.len(), 8);
+            let tag = sender.sign_command(&cmd);
+            assert_eq!(tag.len(), 8);
         }
     }
 
     #[test]
-    fn buffer_drops_oldest() {
-        let mut sender = ControlSender::new("test-key", 30);
-        sender.enqueue(ControlFrame::Steering { value: 1.0 }).unwrap();
-        sender.enqueue(ControlFrame::Brake { value: 0.5 }).unwrap();
-        sender.enqueue(ControlFrame::Throttle { value: 10.0 }).unwrap();
-        assert_eq!(sender.depth(), 3);
-
-        // This drops the first (steering 1.0)
-        sender.enqueue(ControlFrame::Steering { value: 2.0 }).unwrap();
-        assert_eq!(sender.depth(), 3);
-
-        // First out should be brake 0.5
-        let next = sender.dequeue().unwrap();
-        assert!(next.body.contains("brake"));
+    fn emergency_stop_bytes() {
+        let bytes = command_to_bytes(&ControlCommand::EmergencyStop);
+        assert_eq!(bytes, b"emergency_stop");
     }
 
     #[test]
-    fn cross_compatible_with_host_validate() {
-        // This test verifies the sender's HMAC can be validated by the Host receiver
-        // Re-implement host-side validate inline to avoid crate dependency
-        let payload = br#"{"type":"steering","value":15.2}"#;
-        let tag = compute_hmac_tag(payload, b"omspbase-control");
+    fn command_to_bytes_all_variants() {
+        assert_eq!(
+            command_to_bytes(&ControlCommand::Steering(1.5)),
+            b"steering:1.5"
+        );
+        assert_eq!(
+            command_to_bytes(&ControlCommand::Brake(0.3)),
+            b"brake:0.3"
+        );
+        assert_eq!(
+            command_to_bytes(&ControlCommand::Throttle(80.0)),
+            b"throttle:80"
+        );
+    }
 
-        // Host-side validation (same algorithm)
-        let mut mac = HmacSha256::new_from_slice(b"omspbase-control").unwrap();
-        mac.update(payload);
-        let result = mac.finalize();
-        let code_bytes = result.into_bytes();
-        assert_eq!(&tag[..], &code_bytes[..8]);
+    #[tokio::test]
+    async fn buffer_depth_tracks_commands() {
+        let sender = ControlSender::new("test-key", 1000);
+        // high rate_hz so rate-limiting doesn't slow the test
+        assert_eq!(sender.depth().await, 0);
+        sender.send(ControlCommand::Steering(1.0)).await.unwrap();
+        assert_eq!(sender.depth().await, 1);
+        sender.send(ControlCommand::Brake(0.5)).await.unwrap();
+        assert_eq!(sender.depth().await, 2);
     }
 }

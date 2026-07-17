@@ -10,6 +10,9 @@ name = "omspbase-server"
 path = "src/main.rs"
 
 [dependencies]
+# Shared core crate
+omspbase-core = { path = "../omspbase-core" }
+
 # WebRTC relay (optional — same feature gate pattern as Host transport.rs)
 webrtc = { version = "0.11", optional = true }
 
@@ -34,6 +37,10 @@ sd-notify = "0.4"
 # Async utilities
 futures-util = "0.3"
 tokio-stream = "0.1"
+
+# Shared state
+dashmap = "6"
+uuid = { version = "1", features = ["v4"] }
 
 [features]
 default = []
