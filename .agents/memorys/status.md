@@ -1,14 +1,15 @@
 # OMSPBase Status
 
-> 生成: 2026-07-17 | 决策数量: 150+ (D1-D118 + ~30 sub-decisions) | Phase: 0→1 过渡 | MVP 实施启动
+> 生成: 2026-07-17 | 决策数量: 150+ (D1-D119) | Phase: 1 | MVP 实施完成 | 111 tests passing
 
 ## Phase
 
-**当前**: Phase 0 架构定义完成 → Phase 1 MVP 实施阶段。
-**MVP 计划**: Host → Server → Remote 三组件遥操作 v2 (D118)。32 任务，~3300 行。
-**架构文档**: 15 篇模块文档 (含新增 13-server / 14-remote)。7 篇 SDD (docs/sdd/)。
+**当前**: Phase 1 MVP 实施完成。4 个 workspace crate 全部通过编译 (0 errors) 和测试 (111 passed)。
+**MVP 成果**: omspbase-core + omspbase-host + omspbase-server + omspbase-remote。信令链路 (Host→Server→Remote) 已集成。
+**测试**: cargo test --workspace: 111 passed (8 suites, 0.12s)。tarpaulin.toml fail-under=50。
+**架构文档**: 15 篇模块文档 (含 13-server / 14-remote)。7 篇 SDD (docs/sdd/)。审计 54/58 项已应用。
 **审计**: 2026-07-17 doc-audit 完成，54/58 项修复已应用。
-**骨架**: crates/omspbase-{host,remote,server} 已创建，待填充实现。
+**骨架**: 已填充。WebRTC/GStreamer 路径为 stub，待 Phase 2 真实集成。
 
 **当前**: Phase 0 架构定义完成 → MVP 实施提案 ready (.sisyphus/plans/mvp-host-remote/)，骨架代码已创建 (crates/omspbase-{host,remote,server})
 
@@ -122,5 +123,16 @@ docs/doc-audit-2026-07-17.md · 54/58 项修复已应用
 ### 实施提案
 
 **.sisyphus/plans/mvp-host-remote/** — 32 任务，~3300 行
-proposal.md · design.md · tasks.md
+### 实施提案
+
 .sisyphus/plans/mvp-host-remote/proposal.md · design.md · tasks.md
+
+### 源码统计 (crates/)
+
+| Crate | 模块数 | 测试数 | 行数 | 状态 |
+|-------|:------:|:------:|------|:----:|
+| omspbase-core | 5 | 41 | ~450 | ✅ |
+| omspbase-host | 9 | 13 | ~600 | ✅ |
+| omspbase-server | 8 | 20 + 26(E2E) | ~650 | ✅ |
+| omspbase-remote | 8 | 11 | ~500 | ✅ |
+| **workspace total** | **30** | **111** | **~2200** | ✅ |

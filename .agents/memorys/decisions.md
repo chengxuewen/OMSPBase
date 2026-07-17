@@ -2026,3 +2026,37 @@ Remote (macOS/Linux/Windows)
 **说明**：运行完整三组件 (Server + Host + Remote) 在同一台桌面机上需要 8GB+ RAM。Server 纯软件 relay，CPU 即可。Host/Remote 需要 GPU 硬件编解码。
 
 **关联**: D-HW-01 (Jetson 基线), D118 (跨平台扩展), D73 (最低 Ubuntu 20.04)
+
+---
+
+## D119 — MVP Phase 1 实施完成
+
+**状态**: ✅
+**日期**: 2026-07-17
+
+MVP Phase 1 (Host→Server→Remote 三组件遥操作 v2) 全部 32 任务实施完成。
+
+**4 个 workspace crate**:
+- omspbase-core: config, error, metrics, protocol, auth (5 模块, 41 tests)
+- omspbase-host: pipeline, transport, session, signaling, emergency, control, metrics, main (9 模块, 13 tests)
+- omspbase-server: room, signaling, relay, monitor, main (8 模块, 46 tests)
+- omspbase-remote: transport, decode, control, signaling, main (8 模块, 11 tests)
+
+**关键实现**:
+- PSK HMAC-SHA256 认证，8 字节 tag，常量时间比较
+- SignalingMessage 9 变体协议
+- DashMap 房间管理 (join/leave/get_other_peer/full-room lifecycle)
+- Host 平台自适应编码管线 stub (vt264enc/nvenc/vaapi/x264)
+- Remote GStreamer decode 管线 stub (appsrc→decodebin→autovideosink)
+- UDP 紧急停止 fallback (port 9999)
+- Host/Remote WebSocket 信令客户端 (tokio-tungstenite 0.24)
+- Server lib+bin 双模式
+- Session 持久化 (JSON)
+
+**测试**: 111 passed (8 suites, 0.12s)。tarpaulin.toml fail-under=50。
+
+**待 Phase 2**: WebRTC PeerConnection 真实集成、GStreamer 平台验证、插件系统、napi-binding
+
+**技术栈**: Rust 2024, webrtc 0.11 (livekit/webrtc-rs), GStreamer 0.23 (feature-gated), axum 0.7 WS
+
+**关联**: D118, D-MVP-EXEC, .sisyphus/plans/mvp-host-remote/
