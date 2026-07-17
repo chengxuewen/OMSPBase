@@ -1,0 +1,8 @@
+# clippy.toml — AUDESYS lint rules
+#
+# Phase 0: deny unwrap/expect/println in production code
+# Phase 1: add more pedantic lints as codebase grows
+
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-print-in-tests = true

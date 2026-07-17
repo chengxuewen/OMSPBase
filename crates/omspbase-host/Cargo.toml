@@ -1,0 +1,59 @@
+[package]
+name = "omspbase-host"
+version = "0.1.0"
+edition = "2024"
+description = "OMSPBase Host — V4L2 capture, NVENC encode, WebRTC push"
+license = "Apache-2.0"
+
+[[bin]]
+name = "omspbase-host"
+path = "src/main.rs"
+
+[dependencies]
+# GStreamer (optional — requires system GStreamer on Linux/Jetson)
+gstreamer = { version = "0.23", optional = true }
+gstreamer-app = { version = "0.23", optional = true }
+gstreamer-video = { version = "0.23", optional = true }
+
+# WebRTC (libwebrtc via webrtc-sys) — optional on macOS
+webrtc = { version = "0.11", optional = true }
+
+# HTTP + WebSocket
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["trace", "cors"] }
+
+# Config + serialization
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+prometheus-client = "0.22"
+
+# Systemd
+sd-notify = "0.4"
+
+# Crypto (HMAC for DataChannel)
+hmac = "0.12"
+sha2 = "0.10"
+
+# Async utilities
+futures-util = "0.3"
+
+[features]
+default = []
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
+webrtc = ["dep:webrtc"]
+production = ["gstreamer", "webrtc"]
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

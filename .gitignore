@@ -1,0 +1,95 @@
+# This file is used to ignore files which are generated
+# ----------------------------------------------------------------------------
+
+*~
+*.autosave
+*.core
+*.orig
+*.rej
+.#*
+*.*#
+tags
+.DS_Store
+.directory
+*.debug
+*.app
+Thumbs.db
+
+# xemacs temporary files
+*.flc
+
+# Vim temporary files
+.*.swp
+
+# Visual Studio generated files
+*.ib_pdb_index
+*.idb
+*.ilk
+*.pdb
+*.sln
+*.suo
+*.vcproj
+*vcproj.*.*.user
+*.ncb
+*.sdf
+*.opensdf
+*.vcxproj
+*vcxproj.*
+
+# MinGW generated files
+*.Debug
+*.Release
+
+# Python byte code
+*.pyc
+
+# Binaries
+# --------
+*.dll
+*.exe
+
+# IDE files
+# --------
+.vs
+.idea
+.cache
+.vscode
+!.vscode/settings.json
+
+# Build dirs
+# --------
+out
+log
+dist
+build
+install
+target
+
+# Temp dirs
+# --------
+nodejs
+stash
+
+# nodejs environments
+node_modules
+.npm-cache
+.turbo
+
+# Don't ignore files
+# --------
+!.vscode/settings.json
+
+# Agent dirs
+.venv-openspace
+.playwright-mcp
+.codegraph
+# pixi environment manager
+.pixi
+.pixi-pack
+.pixi-cache
+.sisyphus
+.omo
+
+# Test and build artifacts
+test-results
+*.tsbuildinfo
