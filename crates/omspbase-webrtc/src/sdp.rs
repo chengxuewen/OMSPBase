@@ -30,7 +30,9 @@ impl fmt::Display for SdpType {
 
 /// A parsed session description with type and SDP body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionDescription {
+    #[serde(rename = "type")]
     pub sdp_type: SdpType,
     pub sdp: String,
 }

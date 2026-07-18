@@ -201,14 +201,46 @@ impl WebrtcTransport {
 
     /// Send a frame (raw bytes) through the DataChannel.
     ///
-    /// Uses unordered unreliable delivery — no retransmits, best-effort.
+    /// No-op if DataChannel is not yet open (ponytail: non-fatal for startup race).
     pub async fn send_frame(&self, data: &[u8]) -> Result<(), CoreError> {
+        if !self.is_open() {
+            return Ok(()); // ponytail: DC not open yet, skip silently
+        }
         let chunk = Bytes::copy_from_slice(data);
         self.dc
             .send(&chunk)
             .await
-            .map(|_s| ())
+.map(|_s| ())
             .map_err(|e| CoreError::PeerConnectionFailure(format!("DC send: {e}")))
+    }
+
+    /// Handle incoming SDP answer from remote peer.
+    ///
+    /// Parses the JSON SDP, calls pc.set_remote_description().
+    pub async fn handle_answer(&self, sdp_json: &str) -> Result<(), CoreError> {
+        let answer: webrtc::peer_connection::sdp::session_description::RTCSessionDescription =
+            serde_json::from_str(sdp_json)
+                .map_err(|e| CoreError::ConfigParse(format!("parse answer SDP: {e}")))?;
+        self.pc
+            .set_remote_description(answer)
+            .await
+            .map_err(|e| CoreError::PeerConnectionFailure(format!("set remote: {e}")))?;
+        tracing::info!("Remote description set — WebRTC negotiation complete");
+        Ok(())
+    }
+
+    /// Handle incoming ICE candidate from remote peer.
+    ///
+    /// Parses JSON RTCIceCandidateInit to RTCIceCandidate, calls pc.add_ice_candidate().
+    pub async fn handle_remote_ice(&self, candidate_json: &str) -> Result<(), CoreError> {
+        let init: webrtc::ice_transport::ice_candidate::RTCIceCandidateInit =
+            serde_json::from_str(candidate_json)
+                .map_err(|e| CoreError::ConfigParse(format!("parse ice: {e}")))?;
+        self.pc
+            .add_ice_candidate(init)
+            .await
+            .map_err(|e| CoreError::PeerConnectionFailure(format!("add ice: {e}")))?;
+        Ok(())
     }
 
     /// Get a reference to the underlying DataChannel.

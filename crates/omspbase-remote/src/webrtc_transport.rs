@@ -70,8 +70,11 @@ impl WebrtcTransport {
                 tokio::spawn(async move {
                     loop {
                         match rx.recv().await {
-                            Some(DataChannelEvent::Message(DataMessage { data })) => {
-                                let _ = frame_tx.send(data);
+                        Some(DataChannelEvent::Open) => {
+                            tracing::info!("Signaling: DataChannel opened (remote)");
+                        }
+                        Some(DataChannelEvent::Message(DataMessage { data })) => {
+                            tracing::info!("Signaling: frame received via DataChannel ({} bytes)", data.len());
                             }
                             Some(DataChannelEvent::Closed) | None => break,
                             _ => {} // Open, Error — ignore

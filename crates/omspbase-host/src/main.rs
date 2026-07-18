@@ -145,20 +145,40 @@ async fn main() {
 
     let webrtc = Arc::new(webrtc_transport);
 
-    // Spawn WS receiver loop — handles incoming SDP answers and room events
+    // Spawn WS receiver loop — handles incoming SDP answers and ICE candidates
+    let ws_webrtc = webrtc.clone();
     let _ws_receiver_handle = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(msg) => {
                     if let Ok(text) = msg.to_text() {
                         tracing::debug!("WS received: {}", text);
-                        // Parse SDP answer from remote and set remote description
                         if let Ok(sig_msg) =
                             serde_json::from_str::<SignalingMessage>(text)
                         {
-                            if let SignalingMessage::Sdp { sdp, .. } = sig_msg {
-                                tracing::info!("Received SDP answer, setting remote description");
-                                // ponytail: full SDP answer processing in Phase 2
+                            match sig_msg {
+                                SignalingMessage::Sdp { sdp, .. } => {
+                                    tracing::info!("Received SDP answer, setting remote description");
+                                    match ws_webrtc.handle_answer(&sdp).await {
+                                        Ok(()) => tracing::info!("Remote description set"),
+                                        Err(e) => tracing::error!("Failed to set remote description: {e}"),
+                                    }
+                                }
+                                SignalingMessage::IceCandidate { candidate, sdp_mid, sdp_mline_index, .. } => {
+                                    let candidate_json = serde_json::json!({
+                                        "candidate": candidate,
+                                        "sdpMid": sdp_mid,
+                                        "sdpMLineIndex": sdp_mline_index,
+                                    }).to_string();
+                                    match ws_webrtc.handle_remote_ice(&candidate_json).await {
+                                        Ok(()) => tracing::debug!("ICE candidate added"),
+                                        Err(e) => tracing::error!("Failed to add ICE: {e}"),
+                                    }
+                                }
+                                SignalingMessage::RoomLeave { .. } => {
+                                    tracing::info!("Peer left room");
+                                }
+                                _ => {} // ponytail: ignore other variants
                             }
                         }
                     }

@@ -154,6 +154,19 @@ impl SignalingClient {
                         Some(Ok(Message::Text(text))) => {
                             match serde_json::from_str::<SignalingMessage>(&text) {
                                 Ok(SignalingMessage::Sdp { sdp, room_id, .. }) => {
+                                    // ponytail: only process SDP offers; ignore answer echoes
+                                    let sdp_parsed: omspbase_webrtc::SessionDescription =
+                                        match serde_json::from_str(&sdp) {
+                                            Ok(d) => d,
+                                            Err(e) => {
+                                                tracing::warn!("Signaling: parse SDP: {e}");
+                                                continue;
+                                            }
+                                        };
+                                    if sdp_parsed.sdp_type != omspbase_webrtc::SdpType::Offer {
+                                        tracing::debug!("Signaling: ignoring non-offer SDP ({})", sdp_parsed.sdp_type);
+                                        continue;
+                                    }
                                     tracing::info!("Signaling: received SDP offer");
                                     match webrtc.handle_offer(&sdp).await {
                                         Ok(answer_json) => {
