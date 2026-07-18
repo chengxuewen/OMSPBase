@@ -1,15 +1,15 @@
 # OMSPBase Status
 
-> 生成: 2026-07-17 | 决策数量: 150+ (D1-D119) | Phase: 1 | MVP 实施完成 | 111 tests passing
+> 生成: 2026-07-18 | 决策数量: 150+ (D1-D119) | Phase: 1 | 117 tests passing | pixi 环境就绪
 
 ## Phase
 
-**当前**: Phase 1 微内核实施。omspbase-core 新增 Pipeline/Plugin/Broadcaster 基础设施 (3 模块, 6 测试)。webrtc-sys-backend 默认启用。
+**当前**: Phase 1 基础设施完善。pixi 环境就绪 (GStreamer 1.28.5 + Rust 1.85)。Transport 帧通路完成 (host→mpsc→WS→server→WS→mpsc→remote)。GStreamer host/remote 编译通过。omspbase-webrtc default 改为 []。
 **MVP 成果**: 5 crate workspace。omspbase-core 微内核 (PipelineEngine/PluginManager/FragmentBroadcaster) + omspbase-host/server/remote 应用 + omspbase-webrtc FFI stub。
 **测试**: 4 app crates: 117 passed (8 suites)。workspace 全量需排除 omspbase-webrtc (libwebrtc 未预编译)。
 **架构文档**: 15 篇模块文档 (含 13-server / 14-remote)。7 篇 SDD (docs/sdd/)。审计 54/58 项已应用。
 **审计**: 2026-07-17 doc-audit 完成，54/58 项修复已应用。
-**骨架**: WebRTC/GStreamer 路径为 stub。PluginManager::create_node 返回 Phase 2 错误。
+**骨架**: WebRTC 路径为 stub。PluginManager::create_node 返回 Phase 2 错误。
 
 **当前**: Phase 0 架构定义完成 → MVP 实施提案 ready (.sisyphus/plans/mvp-host-remote/)，骨架代码已创建 (crates/omspbase-{host,remote,server})
 
