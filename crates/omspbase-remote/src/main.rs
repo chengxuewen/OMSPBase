@@ -5,8 +5,10 @@ mod decode;
 mod signaling;
 mod transport;
 mod webrtc_transport;
+mod engine_adapters;
 
 // ponytail: no direct CoreError use in main — errors handled via config load / pipeline API
+use omspbase_core::engine::PipelineEngine;
 use omspbase_core::metrics::CoreMetrics;
 
 #[tokio::main]
@@ -82,7 +84,6 @@ async fn main() {
     let psk = config.psk.as_deref().unwrap_or("omspbase-dev").to_string();
     let (frame_tx, frame_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
-    let pipeline_for_recv = pipeline.clone();
 
     let signaling = signaling::SignalingClient::new_with_frame_tx(
         &config.server.signaling_url,
@@ -97,25 +98,18 @@ async fn main() {
     });
     tracing::info!("Signaling connection initiated to {}", config.server.signaling_url);
 
-    let mut transport = transport::Transport::new_with_receiver(
-        &config.server.signaling_url,
-        frame_rx,
-    );
-    tokio::spawn(async move {
-        loop {
-            match transport.receive_frame().await {
-                Ok(data) => {
-                    if let Err(e) = pipeline_for_recv.push_h264(&data) {
-                        tracing::warn!("Decode push failed: {e}");
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Frame receive error: {e}");
-                    break;
-                }
-            }
-        }
-    });
+    // PipelineEngine: orchestrate WebRTC frame receive → decode
+    let engine = PipelineEngine::new(tokio::runtime::Handle::current());
+
+    engine.add_chain(
+        "receive".into(),
+        Box::new(engine_adapters::FrameSource::new(frame_rx)),
+        vec![],
+        vec![Box::new(engine_adapters::DecodeSink::new(pipeline.clone()))],
+    ).expect("Failed to add receive chain");
+
+    engine.start().expect("Failed to start engine");
+
 
     // Report ready: active_connections bumped for startup
     metrics.active_connections.inc();
@@ -129,6 +123,11 @@ async fn main() {
 
     if let Err(e) = server.await {
         tracing::error!("Server error: {e}");
+    }
+
+    // Stop engine
+    if let Err(e) = engine.stop().await {
+        tracing::error!("Engine stop error: {e}");
     }
 
     // Stop pipeline
