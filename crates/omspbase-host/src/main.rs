@@ -15,6 +15,7 @@ use std::process;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
+use omspbase_core::engine::PipelineEngine;
 use omspbase_core::protocol::SignalingMessage;
 use signaling::SignalingClient;
 mod config;
@@ -22,6 +23,7 @@ mod control;
 mod emergency;
 mod metrics;
 mod pipeline;
+mod engine_adapters;
 mod session;
 mod signaling;
 mod transport;
@@ -208,28 +210,24 @@ async fn main() {
         }
     });
 
-    // Background: pull frames and send via WebRTC DataChannel
+    // PipelineEngine: orchestrate capture → encode → WebRTC push
     let push_pipeline = pipeline.clone();
     let push_webrtc = webrtc.clone();
-    let push_handle = tokio::spawn(async move {
-        loop {
-            match push_pipeline.pull_sample() {
-                Ok(data) => {
-                    if let Err(e) = push_webrtc.send_frame(&data).await {
-                        tracing::warn!("Transport send error: {e}");
-                    }
-                    if let Ok(m) = shared_metrics.read() {
-                        m.relayed_bytes.inc_by(data.len() as u64);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("Pipeline pull error: {e}");
-                    // ponytail: backoff on error — pull_sample already blocks 100ms
-                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                }
-            }
-        }
-    });
+    let shared_m = shared_metrics.clone();
+
+    let engine = PipelineEngine::new(tokio::runtime::Handle::current());
+
+    engine.add_chain(
+        "capture".into(),
+        Box::new(engine_adapters::GstCaptureSource::new(push_pipeline.clone())),
+        vec![],
+        vec![Box::new(engine_adapters::WebrtcOutputSink::new(
+            push_webrtc.clone(),
+            tokio::runtime::Handle::current(),
+        ))],
+    ).expect("Failed to add capture chain");
+
+    engine.start().expect("Failed to start engine");
 
     // Start metrics updater: sync dropped frames counter
     let metrics_updater = {
@@ -261,7 +259,8 @@ async fn main() {
     }
 
     // Clean up background tasks
-    push_handle.abort();
+    // Stop engine before aborting tasks
+    let _ = engine.stop().await;
     metrics_updater.abort();
 
 }
