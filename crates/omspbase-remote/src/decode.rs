@@ -35,14 +35,40 @@ impl DecodePipeline {
         let desc = format!(
             "appsrc name=src format=time is-live=true do-timestamp=true \
              caps=video/x-h264,stream-format=byte-stream,alignment=au \
-             ! decodebin ! videoconvert ! videoscale \
+             ! h264parse ! vtdec \
+             ! videoconvert ! videoscale \
              ! video/x-raw,width={width},height={height} \
              ! autovideosink sync=false"
         );
         let pipeline = gstreamer::parse::launch(&desc)
-            .expect("Failed to create decode pipeline")
+            .unwrap_or_else(|e| panic!("Failed to create decode pipeline: {e}"))
             .downcast::<gstreamer::Pipeline>()
             .expect("Pipeline downcast failed");
+
+        // ponytail: bus sync handler for error/warning logging (match host pattern)
+        let bus = pipeline.bus().expect("Pipeline bus not available");
+        bus.set_sync_handler(move |_bus, msg| {
+            match msg.view() {
+                gstreamer::MessageView::Error(e) => {
+                    tracing::error!(
+                        src = %e.src().map(|s| s.path_string()).unwrap_or_default(),
+                        error = %e.error(),
+                        debug = %e.debug().unwrap_or_default(),
+                        "GStreamer bus error"
+                    );
+                }
+                gstreamer::MessageView::Warning(w) => {
+                    tracing::warn!(
+                        src = %w.src().map(|s| s.path_string()).unwrap_or_default(),
+                        error = %w.error(),
+                        debug = %w.debug().unwrap_or_default(),
+                        "GStreamer bus warning"
+                    );
+                }
+                _ => {}
+            }
+            gstreamer::BusSyncReply::Pass
+        });
 
         let appsrc = pipeline
             .by_name("src")
@@ -64,7 +90,7 @@ impl DecodePipeline {
     }
 
     /// Stop the pipeline (set to Null state).
-    pub fn stop(&mut self) -> Result<(), CoreError> {
+    pub fn stop(&self) -> Result<(), CoreError> {
         self.pipeline
             .set_state(gstreamer::State::Null)
             .map_err(|e| CoreError::Unknown(format!("Pipeline stop failed: {e}")))?;
@@ -118,7 +144,7 @@ impl DecodePipeline {
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<(), CoreError> {
+    pub fn stop(&self) -> Result<(), CoreError> {
         Ok(())
     }
 

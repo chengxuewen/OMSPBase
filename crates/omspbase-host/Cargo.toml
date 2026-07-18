@@ -17,7 +17,8 @@ gstreamer-app = { version = "0.23", optional = true }
 gstreamer-video = { version = "0.23", optional = true }
 
 # WebRTC (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
-omspbase-webrtc = { path = "../omspbase-webrtc", optional = true }
+omspbase-webrtc = { path = "../omspbase-webrtc", features = ["webrtc-backend"] }
+webrtc = "0.12"
 
 # HTTP + WebSocket
 axum = { version = "0.7", features = ["ws"] }
@@ -44,6 +45,8 @@ sha2 = "0.10"
 tokio-tungstenite = { version = "0.24", features = ["connect"] }
 futures-util = "0.3"
 base64 = "0.22"
+async-trait = "0.1"
+bytes = "1"
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
@@ -51,8 +54,9 @@ chrono = { version = "0.4", features = ["serde"] }
 [features]
 default = []
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
-webrtc = ["dep:omspbase-webrtc"]
-production = ["gstreamer", "webrtc"]
+production = ["gstreamer"]
+# Backward-compatible cfg gate for transport.rs fallback path
+webrtc = []
 
 [dev-dependencies]
 tempfile = "3"

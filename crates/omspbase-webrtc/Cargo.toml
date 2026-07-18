@@ -2,22 +2,23 @@
 name = "omspbase-webrtc"
 version = "0.1.0"
 edition = "2024"
-description = "OMSPBase WebRTC thin wrapper — webrtc-sys FFI (livekit/libwebrtc)"
+description = "OMSPBase WebRTC thin wrapper — pure Rust webrtc-rs backend"
 license = "Apache-2.0"
 
 [dependencies]
-# Optional: requires prebuilt libwebrtc (see webrtc-kit build instructions)
-webrtc-sys = { git = "https://github.com/livekit/rust-sdks", tag = "libwebrtc/v0.3.39", optional = true }
-cxx = { version = "1", optional = true }
-parking_lot = { version = "0.12", optional = true }
+webrtc = { version = "0.12", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 tracing = "0.1"
 thiserror = "2"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [features]
 default = []
-# Enable for real libwebrtc FFI (needs prebuilt libwebrtc)
-webrtc-sys-backend = ["dep:webrtc-sys", "dep:cxx", "dep:parking_lot"]
+# Enable real WebRTC via webrtc-rs (requires tokio runtime)
+webrtc-backend = ["dep:webrtc"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+webrtc = "0.12"

@@ -136,84 +136,160 @@ impl SignalingClient {
             }
         };
 
-        // Step 5: SDP/ICE relay loop
-        // ponytail: log messages for now; real SDP/ICE handler deferred to WebRTC integration
-        while let Some(msg) = ws.next().await {
-            tracing::debug!("Signaling: received WS message in relay loop");
-            match msg {
-                Ok(Message::Text(text)) => {
-                    match serde_json::from_str::<SignalingMessage>(&text) {
-                        Ok(SignalingMessage::Sdp { sdp: _, target, .. }) => {
-                            tracing::debug!("Signaling: received SDP from {:?}", target);
-                        }
-                        Ok(SignalingMessage::IceCandidate { candidate: _, .. }) => {
-                            tracing::debug!("Signaling: received ICE candidate");
-                        }
-                        Ok(SignalingMessage::RoomLeave { peer_id, .. }) => {
-                            tracing::info!("Signaling: peer {peer_id} left room");
-                        }
-                        Ok(SignalingMessage::Frame { data_base64, .. }) => {
-                            match base64::engine::general_purpose::STANDARD.decode(&data_base64) {
-                                Ok(data) => {
-                                    let size = data.len();
-                                    if let Some(ref tx) = self.frame_tx {
-                                        if tx.send(data).is_err() {
-                                            tracing::warn!("Signaling: frame receiver dropped");
+        // Step 5: SDP/ICE relay loop with WebRTC transport
+
+        // Set up WebRTC transport for data channel frame reception
+        let (ice_tx, mut ice_rx) = crate::webrtc_transport::ice_channel();
+        let frame_tx = self
+            .frame_tx
+            .clone()
+            .expect("frame_tx required for WebRTC transport");
+        let webrtc = crate::webrtc_transport::WebrtcTransport::new(frame_tx, ice_tx);
+
+        loop {
+            tokio::select! {
+                // Incoming signaling messages from server
+                msg = ws.next() => {
+                    match msg {
+                        Some(Ok(Message::Text(text))) => {
+                            match serde_json::from_str::<SignalingMessage>(&text) {
+                                Ok(SignalingMessage::Sdp { sdp, room_id, .. }) => {
+                                    tracing::info!("Signaling: received SDP offer");
+                                    match webrtc.handle_offer(&sdp).await {
+                                        Ok(answer_json) => {
+                                            let answer = SignalingMessage::Sdp {
+                                                room_id,
+                                                target: None,
+                                                sdp: answer_json,
+                                            };
+                                            if let Ok(json) = serde_json::to_string(&answer) {
+                                                if ws.send(Message::Text(json.into())).await.is_err() {
+                                                    tracing::error!("Signaling: failed to send answer SDP");
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Signaling: handle_offer error: {e}");
                                         }
                                     }
-                                    tracing::info!("Signaling: frame received ({size} bytes)");
                                 }
-                                Err(e) => {
-                                    tracing::warn!("Signaling: base64 decode error: {e}");
+                                Ok(SignalingMessage::IceCandidate { candidate, sdp_mid, sdp_mline_index, .. }) => {
+                                    tracing::debug!("Signaling: received ICE candidate");
+                                    let init_json = serde_json::json!({
+                                        "candidate": candidate,
+                                        "sdpMid": sdp_mid,
+                                        "sdpMLineIndex": sdp_mline_index,
+                                    });
+                                    if let Err(e) = webrtc.handle_ice(&init_json.to_string()).await {
+                                        tracing::error!("Signaling: handle_ice error: {e}");
+                                    }
                                 }
-                            }
-                        }
-                        Ok(_) => {} // ponytail: ignore uncharted variants (RoomJoin, Error, etc.)
-                        Err(_e) => {
-                            // Not a SignalingMessage — try raw JSON for Frame
-                            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
-                                if raw.get("type").and_then(|v| v.as_str()) == Some("frame") {
-                                    if let Some(b64) = raw
-                                        .get("data_base64")
-                                        .and_then(|v| v.as_str())
-                                    {
-                                        match base64::engine::general_purpose::STANDARD.decode(b64) {
-                                            Ok(data) => {
-                                                let size = data.len();
-                                                if let Some(ref tx) = self.frame_tx {
-                                                    if tx.send(data).is_err() {
-                                                        tracing::warn!("Signaling: frame receiver dropped");
+                                Ok(SignalingMessage::RoomLeave { peer_id, .. }) => {
+                                    tracing::info!("Signaling: peer {peer_id} left room");
+                                }
+                                Ok(SignalingMessage::Frame { data_base64, .. }) => {
+                                    match base64::engine::general_purpose::STANDARD.decode(&data_base64) {
+                                        Ok(data) => {
+                                            let size = data.len();
+                                            // ponytail: WS frame relay still works for bootstrapping;
+                                            // once WebRTC DC is established, frames arrive via on_data_channel
+                                            if let Some(ref tx) = self.frame_tx {
+                                                if tx.send(data).is_err() {
+                                                    tracing::warn!("Signaling: frame receiver dropped");
+                                                }
+                                            }
+                                            tracing::info!("Signaling: frame received ({size} bytes)");
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!("Signaling: base64 decode error: {e}");
+                                        }
+                                    }
+                                }
+                                Ok(_) => {} // ponytail: ignore uncharted variants
+                                Err(_e) => {
+                                    // Not a SignalingMessage — try raw JSON for Frame
+                                    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
+                                        if raw.get("type").and_then(|v| v.as_str()) == Some("frame") {
+                                            if let Some(b64) = raw
+                                                .get("data_base64")
+                                                .and_then(|v| v.as_str())
+                                            {
+                                                match base64::engine::general_purpose::STANDARD.decode(b64) {
+                                                    Ok(data) => {
+                                                        let size = data.len();
+                                                        if let Some(ref tx) = self.frame_tx {
+                                                            if tx.send(data).is_err() {
+                                                                tracing::warn!("Signaling: frame receiver dropped");
+                                                            }
+                                                        }
+                                                        tracing::info!("Signaling: frame received ({size} bytes)");
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::warn!("Signaling: base64 decode error: {e}");
                                                     }
                                                 }
-                                                tracing::info!("Signaling: frame received ({size} bytes)");
+                                            } else {
+                                                tracing::warn!("Signaling: frame missing data_base64");
                                             }
-                                            Err(e) => {
-                                                tracing::warn!("Signaling: base64 decode error: {e}");
-                                            }
+                                        } else {
+                                            tracing::warn!("Signaling: unknown message: {}", &text[..text.len().min(120)]);
                                         }
                                     } else {
-                                        tracing::warn!("Signaling: frame missing data_base64");
+                                        tracing::warn!("Signaling: parse error: {_e}");
                                     }
-                                } else {
-                                    tracing::warn!("Signaling: unknown message: {}", &text[..text.len().min(120)]);
                                 }
-                            } else {
-                                tracing::warn!("Signaling: parse error: {_e}");
                             }
                         }
+                        Some(Ok(Message::Close(_))) => {
+                            tracing::info!("Signaling: connection closed");
+                            break;
+                        }
+                        Some(Ok(Message::Ping(data))) => {
+                            let _ = ws.send(Message::Pong(data)).await;
+                        }
+                        Some(Ok(_)) => {}
+                        Some(Err(e)) => {
+                            tracing::error!("Signaling: WebSocket error: {e}");
+                            break;
+                        }
+                        None => break,
                     }
                 }
-                Ok(Message::Close(_)) => {
-                    tracing::info!("Signaling: connection closed");
-                    break;
-                }
-                Ok(Message::Ping(data)) => {
-                    let _ = ws.send(Message::Pong(data)).await;
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("Signaling: WebSocket error: {e}");
-                    break;
+                // Outgoing ICE candidates from WebRTC transport → relay via WS
+                ice = ice_rx.recv() => {
+                    match ice {
+                        Some(ice_json) => {
+                            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&ice_json) {
+                                let candidate = raw
+                                    .get("candidate")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let sdp_mid = raw
+                                    .get("sdpMid")
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from);
+                                let sdp_mline_index = raw
+                                    .get("sdpMLineIndex")
+                                    .and_then(|v| v.as_u64())
+                                    .map(|n| n as u16);
+                                let ice_msg = SignalingMessage::IceCandidate {
+                                    room_id: self.room_id.clone(),
+                                    target: None,
+                                    candidate: candidate.to_string(),
+                                    sdp_mid,
+                                    sdp_mline_index,
+                                };
+                                if let Ok(json) = serde_json::to_string(&ice_msg) {
+                                    if ws.send(Message::Text(json.into())).await.is_err() {
+                                        tracing::error!("Signaling: failed to send ICE candidate");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        None => break,
+                    }
                 }
             }
         }

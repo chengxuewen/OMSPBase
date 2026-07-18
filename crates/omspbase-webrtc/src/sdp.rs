@@ -3,10 +3,12 @@
 //! Follows the webrtc-kit convention: SDP strings use "\n" as separator
 //! between type and body (e.g., "offer\nv=0\r\n...").
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// SDP type as per W3C RTCSdpType.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SdpType {
     Offer,
     PrAnswer,
@@ -27,7 +29,7 @@ impl fmt::Display for SdpType {
 }
 
 /// A parsed session description with type and SDP body.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionDescription {
     pub sdp_type: SdpType,
     pub sdp: String,

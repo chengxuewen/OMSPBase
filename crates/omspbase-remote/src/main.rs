@@ -4,6 +4,7 @@ mod control;
 mod decode;
 mod signaling;
 mod transport;
+mod webrtc_transport;
 
 // ponytail: no direct CoreError use in main — errors handled via config load / pipeline API
 use omspbase_core::metrics::CoreMetrics;
@@ -47,17 +48,13 @@ async fn main() {
     let height: u32 = 720;
     let decoder: Option<&str> = None;
     let hmac_key = "omspbase-control";
-    let rate_hz: u32 = 30;
 
-    // Phase 1: Create control sender (signs commands with HMAC before DataChannel send)
-    let _control_sender = control::ControlSender::new(hmac_key, rate_hz);
-
-    // ponytail: non-fatal in headless mode for E2E testing
+    // Create + start decode pipeline, then share via Arc for receive loop
     let mut pipeline = decode::DecodePipeline::new(display_name, width, height, decoder);
     if let Err(e) = pipeline.start() {
         tracing::warn!("Decode pipeline start failed: {e}, continuing headless");
     };
-
+    let pipeline = std::sync::Arc::new(pipeline);
     // Phase 3: Build axum router (health + config + metrics)
     let metrics = std::sync::Arc::new(CoreMetrics::new());
     let metrics_arc = metrics.clone();
@@ -85,6 +82,8 @@ async fn main() {
     let psk = config.psk.as_deref().unwrap_or("omspbase-dev").to_string();
     let (frame_tx, frame_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
+    let pipeline_for_recv = pipeline.clone();
+
     let signaling = signaling::SignalingClient::new_with_frame_tx(
         &config.server.signaling_url,
         &psk,
@@ -106,7 +105,9 @@ async fn main() {
         loop {
             match transport.receive_frame().await {
                 Ok(data) => {
-                    tracing::info!("Frame received: {} bytes", data.len());
+                    if let Err(e) = pipeline_for_recv.push_h264(&data) {
+                        tracing::warn!("Decode push failed: {e}");
+                    }
                 }
                 Err(e) => {
                     tracing::error!("Frame receive error: {e}");

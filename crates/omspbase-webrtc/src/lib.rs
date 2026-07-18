@@ -1,7 +1,8 @@
-//! omspbase-webrtc — thin wrapper around webrtc-sys (livekit/libwebrtc FFI).
+//! omspbase-webrtc — thin wrapper around webrtc-rs (pure Rust WebRTC).
 //!
-//! Pattern: each type holds a `handle` to the webrtc-sys C++ object.
-//! All async methods require a tokio runtime.
+//! Provides PeerConnection and DataChannel types with two backends:
+//! - `webrtc-backend` feature: real webrtc-rs implementation
+//! - default (no feature): stub for compilation without WebRTC
 
 pub mod channel;
 pub mod peer;
@@ -27,3 +28,14 @@ pub enum RtcError {
     #[error("Internal error: {0}")]
     Internal(String),
 }
+
+#[cfg(feature = "webrtc-backend")]
+impl From<webrtc::error::Error> for RtcError {
+    fn from(e: webrtc::error::Error) -> Self {
+        RtcError::Internal(e.to_string())
+    }
+}
+
+/// Re-export webrtc-rs for callback types used by consumers.
+#[cfg(feature = "webrtc-backend")]
+pub use webrtc;

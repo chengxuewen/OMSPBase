@@ -1,62 +1,30 @@
 //! PeerConnection thin wrapper.
 //!
-//! Follows webrtc-kit pattern: holds a handle to the webrtc-sys
-//! PeerConnection C++ object. Provides full SDP/ICE/DataChannel/track API.
+//! With `webrtc-backend` feature: wraps webrtc-rs RTCPeerConnection.
+//! Without: stub (returns success, no actual networking).
 
-use std::fmt;
+use std::sync::Arc;
 
 use crate::channel::{DataChannel, DataChannelInit};
 use crate::sdp::{SdpType, SessionDescription};
-use crate::track::TrackReceiver;
 use crate::RtcError;
 
-// ============================================================================
-// Connection state enums (W3C compatible)
-// ============================================================================
+// ── Connection state enums ──
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PeerConnectionState {
-    New,
-    Connecting,
-    Connected,
-    Disconnected,
-    Failed,
-    Closed,
-}
+pub enum PeerConnectionState { New, Connecting, Connected, Disconnected, Failed, Closed }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IceConnectionState {
-    New,
-    Checking,
-    Connected,
-    Completed,
-    Failed,
-    Disconnected,
-    Closed,
-}
+pub enum IceConnectionState { New, Checking, Connected, Completed, Failed, Disconnected, Closed }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IceGatheringState {
-    New,
-    Gathering,
-    Complete,
-}
+pub enum IceGatheringState { New, Gathering, Complete }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SignalingState {
-    Stable,
-    HaveLocalOffer,
-    HaveLocalPrAnswer,
-    HaveRemoteOffer,
-    HaveRemotePrAnswer,
-    Closed,
-}
+pub enum SignalingState { Stable, HaveLocalOffer, HaveLocalPrAnswer, HaveRemoteOffer, HaveRemotePrAnswer, Closed }
 
-// ============================================================================
-// Configuration types
-// ============================================================================
+// ── Configuration types ──
 
-/// ICE server (STUN/TURN).
 #[derive(Debug, Clone)]
 pub struct IceServer {
     pub urls: Vec<String>,
@@ -64,7 +32,6 @@ pub struct IceServer {
     pub password: String,
 }
 
-/// PeerConnection configuration.
 #[derive(Debug, Clone)]
 pub struct PcConfig {
     pub ice_servers: Vec<IceServer>,
@@ -72,22 +39,14 @@ pub struct PcConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IceTransportsType {
-    Relay,
-    NoHost,
-    All,
-}
+pub enum IceTransportsType { Relay, NoHost, All }
 
 impl Default for PcConfig {
     fn default() -> Self {
-        Self {
-            ice_servers: vec![],
-            ice_transport_type: IceTransportsType::All,
-        }
+        Self { ice_servers: vec![], ice_transport_type: IceTransportsType::All }
     }
 }
 
-/// SDP offer options.
 #[derive(Debug, Clone, Default)]
 pub struct OfferOptions {
     pub ice_restart: bool,
@@ -95,11 +54,9 @@ pub struct OfferOptions {
     pub offer_to_receive_video: bool,
 }
 
-/// SDP answer options.
 #[derive(Debug, Clone, Default)]
 pub struct AnswerOptions;
 
-/// ICE candidate received during gathering.
 #[derive(Debug, Clone)]
 pub struct IceCandidate {
     pub candidate: String,
@@ -107,154 +64,209 @@ pub struct IceCandidate {
     pub sdp_mline_index: Option<u16>,
 }
 
-// ============================================================================
-// Callback types (follow webrtc-kit naming)
-// ============================================================================
+// ── PeerConnectionFactory ──
 
-pub type OnIceCandidate = Box<dyn FnMut(IceCandidate) + Send + Sync>;
-pub type OnConnectionChange = Box<dyn FnMut(PeerConnectionState) + Send + Sync>;
-pub type OnIceConnectionChange = Box<dyn FnMut(IceConnectionState) + Send + Sync>;
-pub type OnDataChannel = Box<dyn FnMut(DataChannel) + Send + Sync>;
-pub type OnTrack = Box<dyn FnMut(TrackReceiver) + Send + Sync>;
+pub struct PeerConnectionFactory {
+    #[cfg(feature = "webrtc-backend")]
+    api: webrtc::api::API,
+}
 
-// ============================================================================
-// PeerConnectionFactory
-// ============================================================================
+#[cfg(not(feature = "webrtc-backend"))]
+impl PeerConnectionFactory {
+    pub fn new() -> Self { Self {} }
+    pub async fn create_peer_connection(&self, _config: PcConfig) -> Result<PeerConnection, RtcError> {
+        tracing::info!("Creating PeerConnection (stub)");
+        Ok(PeerConnection {})
+    }
+}
 
-/// Factory for creating PeerConnections.
-///
-/// ponytail: holds webrtc-sys PeerConnectionFactory. Add FFI when linking libwebrtc.
-#[derive(Clone, Default)]
-pub struct PeerConnectionFactory;
-
+#[cfg(feature = "webrtc-backend")]
 impl PeerConnectionFactory {
     pub fn new() -> Self {
-        Self
+        let api = webrtc::api::APIBuilder::new().build();
+        Self { api }
     }
 
-    pub fn create_peer_connection(
-        &self,
-        _config: PcConfig,
-    ) -> Result<PeerConnection, RtcError> {
-        tracing::info!("Creating PeerConnection (stub — webrtc-sys FFI pending)");
-        Ok(PeerConnection::new())
+    pub async fn create_peer_connection(&self, config: PcConfig) -> Result<PeerConnection, RtcError> {
+        tracing::info!("Creating PeerConnection (webrtc-rs)");
+        let mut cfg = webrtc::peer_connection::configuration::RTCConfiguration::default();
+        for srv in &config.ice_servers {
+            cfg.ice_servers.push(webrtc::ice_transport::ice_server::RTCIceServer {
+                urls: srv.urls.clone(),
+                username: srv.username.clone(),
+                credential: srv.password.clone(),
+            });
+        }
+        let pc = self.api.new_peer_connection(cfg).await
+            .map_err(|e| RtcError::PeerConnection(e.to_string()))?;
+        Ok(PeerConnection { inner: Some(Arc::new(pc)) })
     }
 }
 
-impl fmt::Debug for PeerConnectionFactory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PeerConnectionFactory").finish()
-    }
+impl Default for PeerConnectionFactory {
+    fn default() -> Self { Self::new() }
 }
 
-// ============================================================================
-// PeerConnection
-// ============================================================================
+// ── PeerConnection ──
 
-/// W3C RTCPeerConnection — thin wrapper around webrtc-sys.
-///
-/// ponytail: hold the webrtc-sys handle directly; add FFI when libwebrtc is linked.
-/// All async methods require a tokio runtime.
-#[derive(Clone)]
-pub struct PeerConnection;
+pub struct PeerConnection {
+    #[cfg(feature = "webrtc-backend")]
+    inner: Option<Arc<webrtc::peer_connection::RTCPeerConnection>>,
+}
 
+#[cfg(not(feature = "webrtc-backend"))]
 impl PeerConnection {
-    fn new() -> Self {
-        Self
-    }
-
-    // --- SDP negotiation ---
-
-    pub async fn create_offer(&self, _options: &OfferOptions) -> Result<SessionDescription, RtcError> {
-        tracing::trace!("create_offer (stub)");
+    pub async fn create_offer(&self, _: &OfferOptions) -> Result<SessionDescription, RtcError> {
         Ok(SessionDescription::new(SdpType::Offer, String::new()))
     }
-
-    pub async fn create_answer(&self, _options: &AnswerOptions) -> Result<SessionDescription, RtcError> {
-        tracing::trace!("create_answer (stub)");
+    pub async fn create_answer(&self, _: &AnswerOptions) -> Result<SessionDescription, RtcError> {
         Ok(SessionDescription::new(SdpType::Answer, String::new()))
+    }
+    pub async fn set_local_description(&self, _: &SessionDescription) -> Result<(), RtcError> { Ok(()) }
+    pub async fn set_remote_description(&self, _: &SessionDescription) -> Result<(), RtcError> { Ok(()) }
+    pub async fn add_ice_candidate(&self, _: &IceCandidate) -> Result<(), RtcError> { Ok(()) }
+    pub async fn create_data_channel(&self, label: &str, _: DataChannelInit) -> Result<DataChannel, RtcError> {
+        Ok(DataChannel { label: label.to_string(), id: 0 })
+    }
+    pub fn connection_state(&self) -> PeerConnectionState { PeerConnectionState::New }
+    pub fn ice_connection_state(&self) -> IceConnectionState { IceConnectionState::New }
+    pub fn ice_gathering_state(&self) -> IceGatheringState { IceGatheringState::New }
+    pub fn signaling_state(&self) -> SignalingState { SignalingState::Stable }
+    pub async fn close(&self) {}
+}
+
+#[cfg(feature = "webrtc-backend")]
+impl PeerConnection {
+    fn inner(&self) -> &Arc<webrtc::peer_connection::RTCPeerConnection> {
+        self.inner.as_ref().expect("PeerConnection already closed")
+    }
+
+    pub async fn create_offer(&self, options: &OfferOptions) -> Result<SessionDescription, RtcError> {
+        let mut opts = webrtc::peer_connection::offer_answer_options::RTCOfferOptions::default();
+        if options.ice_restart { opts.ice_restart = true; }
+        let sdp = self.inner().create_offer(Some(opts)).await?;
+        Ok(SessionDescription { sdp_type: SdpType::Offer, sdp: sdp.sdp })
+    }
+
+    pub async fn create_answer(&self, _: &AnswerOptions) -> Result<SessionDescription, RtcError> {
+        let sdp = self.inner().create_answer(None).await?;
+        Ok(SessionDescription { sdp_type: SdpType::Answer, sdp: sdp.sdp })
     }
 
     pub async fn set_local_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
-        tracing::trace!(sdp_type = %desc.sdp_type, "set_local_description (stub)");
+        let sdp = match desc.sdp_type {
+            SdpType::Offer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(desc.sdp.clone())?,
+            SdpType::Answer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::answer(desc.sdp.clone())?,
+            _ => return Err(RtcError::Sdp("unsupported SDP type".into())),
+        };
+        self.inner().set_local_description(sdp).await?;
         Ok(())
     }
 
     pub async fn set_remote_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
-        tracing::trace!(sdp_type = %desc.sdp_type, "set_remote_description (stub)");
+        let sdp = match desc.sdp_type {
+            SdpType::Offer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(desc.sdp.clone())?,
+            SdpType::Answer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::answer(desc.sdp.clone())?,
+            _ => return Err(RtcError::Sdp("unsupported SDP type".into())),
+        };
+        self.inner().set_remote_description(sdp).await?;
         Ok(())
     }
 
-    // --- ICE ---
-
-    pub async fn add_ice_candidate(&self, _candidate: &IceCandidate) -> Result<(), RtcError> {
-        tracing::trace!("add_ice_candidate (stub)");
+    pub async fn add_ice_candidate(&self, candidate: &IceCandidate) -> Result<(), RtcError> {
+        let c = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
+            candidate: candidate.candidate.clone(),
+            sdp_mid: candidate.sdp_mid.clone(),
+            sdp_mline_index: candidate.sdp_mline_index,
+            ..Default::default()
+        };
+        self.inner().add_ice_candidate(c).await?;
         Ok(())
     }
 
-    // --- DataChannel ---
-
-    pub fn create_data_channel(
-        &self,
-        label: &str,
-        _init: DataChannelInit,
-    ) -> Result<DataChannel, RtcError> {
-        tracing::trace!(label, "create_data_channel (stub)");
-        Ok(DataChannel {
-            label: label.to_string(),
-            id: 0,
-        })
+    pub async fn create_data_channel(&self, label: &str, _: DataChannelInit) -> Result<DataChannel, RtcError> {
+        let dc = self.inner().create_data_channel(label, None).await
+            .map_err(|e| RtcError::DataChannel(e.to_string()))?;
+        Ok(DataChannel::from_webrtc(dc).await)
     }
-
-    // --- State queries ---
 
     pub fn connection_state(&self) -> PeerConnectionState {
-        PeerConnectionState::New
+        use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState::*;
+        match self.inner().connection_state() {
+            New => PeerConnectionState::New, Connecting => PeerConnectionState::Connecting,
+            Connected => PeerConnectionState::Connected, Disconnected => PeerConnectionState::Disconnected,
+            Failed => PeerConnectionState::Failed, Closed => PeerConnectionState::Closed,
+            _ => PeerConnectionState::New,
+        }
     }
-
     pub fn ice_connection_state(&self) -> IceConnectionState {
-        IceConnectionState::New
+        use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::*;
+        match self.inner().ice_connection_state() {
+            New => IceConnectionState::New, Checking => IceConnectionState::Checking,
+            Connected => IceConnectionState::Connected, Completed => IceConnectionState::Completed,
+            Failed => IceConnectionState::Failed, Disconnected => IceConnectionState::Disconnected,
+            Closed => IceConnectionState::Closed, _ => IceConnectionState::New,
+        }
     }
-
     pub fn ice_gathering_state(&self) -> IceGatheringState {
-        IceGatheringState::New
+        use webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState::*;
+        match self.inner().ice_gathering_state() {
+            Unspecified | New => IceGatheringState::New, Gathering => IceGatheringState::Gathering,
+            Complete => IceGatheringState::Complete, _ => IceGatheringState::New,
+        }
     }
-
     pub fn signaling_state(&self) -> SignalingState {
-        SignalingState::Stable
+        use webrtc::peer_connection::signaling_state::RTCSignalingState::*;
+        match self.inner().signaling_state() {
+            Stable => SignalingState::Stable, HaveLocalOffer => SignalingState::HaveLocalOffer,
+            Closed => SignalingState::Closed, _ => SignalingState::Stable,
+        }
     }
 
-    pub fn close(&self) {
-        tracing::trace!("PeerConnection::close");
+    pub async fn close(&self) {
+        if let Some(pc) = &self.inner {
+            let _ = pc.close().await;
+        }
     }
 
-    // --- Callback registration ---
-
-    pub fn on_ice_candidate(&self, _cb: Option<OnIceCandidate>) {
-        tracing::trace!("on_ice_candidate registered (stub)");
+    /// Set on_data_channel callback. The closure receives the raw RTCDataChannel.
+    /// Caller should use DataChannel::from_webrtc to create a wrapper, then spool it.
+    pub fn on_data_channel(
+        &self,
+        f: Box<
+            dyn FnMut(
+                    std::sync::Arc<webrtc::data_channel::RTCDataChannel>,
+                ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
+                + Send
+                + Sync
+                + 'static,
+        >,
+    ) {
+        self.inner().on_data_channel(f);
     }
 
-    pub fn on_connection_state_change(&self, _cb: Option<OnConnectionChange>) {
-        tracing::trace!("on_connection_state_change registered (stub)");
-    }
-
-    pub fn on_ice_connection_state_change(&self, _cb: Option<OnIceConnectionChange>) {
-        tracing::trace!("on_ice_connection_state_change registered (stub)");
-    }
-
-    pub fn on_data_channel(&self, _cb: Option<OnDataChannel>) {
-        tracing::trace!("on_data_channel registered (stub)");
-    }
-
-    pub fn on_track(&self, _cb: Option<OnTrack>) {
-        tracing::trace!("on_track registered (stub)");
+    /// Set on_ice_candidate callback. None means gathering complete.
+    pub fn on_ice_candidate(
+        &self,
+        f: Box<
+            dyn FnMut(
+                    Option<webrtc::ice_transport::ice_candidate::RTCIceCandidate>,
+                ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
+                + Send
+                + Sync
+                + 'static,
+        >,
+    ) {
+        self.inner().on_ice_candidate(f);
     }
 }
 
-impl fmt::Debug for PeerConnection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PeerConnection")
-            .field("state", &self.connection_state())
-            .finish()
+
+impl Clone for PeerConnection {
+    fn clone(&self) -> Self {
+        #[cfg(feature = "webrtc-backend")]
+        { Self { inner: self.inner.clone() } }
+        #[cfg(not(feature = "webrtc-backend"))]
+        { Self {} }
     }
 }

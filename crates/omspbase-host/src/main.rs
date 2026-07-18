@@ -12,9 +12,11 @@
 
 use std::process;
 
-use futures_util::{SinkExt, StreamExt};
-use tokio::sync::mpsc;
-use tokio_tungstenite::tungstenite::Message;
+use std::sync::Arc;
+
+use futures_util::StreamExt;
+use omspbase_core::protocol::SignalingMessage;
+use signaling::SignalingClient;
 mod config;
 mod control;
 mod emergency;
@@ -23,6 +25,7 @@ mod pipeline;
 mod session;
 mod signaling;
 mod transport;
+mod webrtc_transport;
 
 #[tokio::main]
 async fn main() {
@@ -86,9 +89,7 @@ async fn main() {
         tracing::warn!("Pipeline start failed: {e}, continuing headless");
     }
 
-    // Phase 3: Create WebRTC transport
-    let (frame_tx, mut frame_rx) = mpsc::unbounded_channel::<String>();
-    let transport = transport::Transport::new_with_sender(frame_tx);
+    // Phase 3: Create control handler (shared with metrics)
     // Phase 4: Create control handler (shared with metrics)
     let control_handler = control::ControlHandler::new();
     let frames_dropped = control_handler.frames_dropped.clone();
@@ -117,48 +118,60 @@ async fn main() {
 
     tracing::info!("Host ready — session id={}", config.capture.source);
 
-    // Phase 6: Connect to Server signaling
+    // Phase 4: Connect to signaling and create WebRTC transport
     let signaling_url = config.server.signaling_url.clone();
     let psk = config
         .psk
         .clone()
         .unwrap_or_else(|| "omspbase-dev".to_string());
-    let room_id = "default"; // ponytail: match remote for E2E
-    let signaling_handle = tokio::spawn(async move {
-        use signaling::SignalingClient;
-        let client = SignalingClient::new(&signaling_url, &psk, &room_id);
-        match client.connect().await {
-            Ok((mut sender, mut receiver)) => {
-                tracing::info!("Signaling connected, entering relay loop");
-                loop {
-                    tokio::select! {
-                        Some(frame_json) = frame_rx.recv() => {
-                            tracing::debug!("Relay: sending frame ({} bytes)", frame_json.len());
-                            if let Err(e) = sender.send(Message::Text(frame_json.into())).await {
-                                tracing::warn!("Failed to send frame via WS: {e}");
+    let room_id = "default".to_string(); // ponytail: match remote for E2E
+
+    let client = SignalingClient::new(&signaling_url, &psk, &room_id);
+    let (ws_sender, mut ws_receiver) = client
+        .connect()
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("Signaling connection failed: {e}");
+            process::exit(1);
+        });
+
+    let (webrtc_transport, dc_events) =
+        webrtc_transport::WebrtcTransport::new(ws_sender, room_id)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!("WebRTC transport creation failed: {e}");
+                process::exit(1);
+            });
+
+    let webrtc = Arc::new(webrtc_transport);
+
+    // Spawn WS receiver loop — handles incoming SDP answers and room events
+    let _ws_receiver_handle = tokio::spawn(async move {
+        while let Some(msg) = ws_receiver.next().await {
+            match msg {
+                Ok(msg) => {
+                    if let Ok(text) = msg.to_text() {
+                        tracing::debug!("WS received: {}", text);
+                        // Parse SDP answer from remote and set remote description
+                        if let Ok(sig_msg) =
+                            serde_json::from_str::<SignalingMessage>(text)
+                        {
+                            if let SignalingMessage::Sdp { sdp, .. } = sig_msg {
+                                tracing::info!("Received SDP answer, setting remote description");
+                                // ponytail: full SDP answer processing in Phase 2
                             }
                         }
-                        Some(msg) = receiver.next() => {
-                            match msg {
-                                Ok(msg) => {
-                                    if let Ok(text) = msg.to_text() {
-                                        tracing::debug!("Relay received: {}", text);
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!("WS receive error: {e}");
-                                }
-                            }
-                        }
-                        else => break,
                     }
                 }
-                tracing::warn!("Signaling relay loop ended");
-            }
-            Err(e) => {
-                tracing::error!("Signaling connection failed: {}", e);
+                Err(e) => tracing::warn!("WS receive error: {e}"),
             }
         }
+        tracing::warn!("WS receiver loop ended");
+    });
+
+    // Spawn DC event loop — logs lifecycle events
+    let _dc_event_handle = tokio::spawn(async move {
+        webrtc_transport::run_dc_event_loop(dc_events).await;
     });
 
     // Phase 7: Emergency UDP listener (background)
@@ -175,13 +188,14 @@ async fn main() {
         }
     });
 
-    // Background: pull frames and send via transport
+    // Background: pull frames and send via WebRTC DataChannel
     let push_pipeline = pipeline.clone();
+    let push_webrtc = webrtc.clone();
     let push_handle = tokio::spawn(async move {
         loop {
             match push_pipeline.pull_sample() {
                 Ok(data) => {
-                    if let Err(e) = transport.send_frame(&data).await {
+                    if let Err(e) = push_webrtc.send_frame(&data).await {
                         tracing::warn!("Transport send error: {e}");
                     }
                     if let Ok(m) = shared_metrics.read() {
@@ -228,7 +242,6 @@ async fn main() {
     // Clean up background tasks
     push_handle.abort();
     metrics_updater.abort();
-    signaling_handle.abort();
 
 }
 
