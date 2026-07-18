@@ -1,12 +1,12 @@
 # OMSPBase Status
 
-> 生成: 2026-07-18 | 决策数量: 150+ (D1-D120) | Phase: 1 | 124 tests passing | pixi 环境就绪
+> 生成: 2026-07-18 | 决策数量: 155+ (D1-D123) | Phase: 1 | 125 tests passing | WebRTC 数据通道 | pixi 环境就绪
 
 ## Phase
 
-**当前**: Phase 1。PipelineEngine 执行器完成 (D120): 源并行、处理器链串行、Sink 扇出、热插拔 add/remove。GStreamer 采集测试 CFG-gated。
-**MVP 成果**: 5 crate workspace, 124 tests。omspbase-core (9 modules: PipelineEngine/PluginManager/FragmentBroadcaster) + host/server/remote + webrtc stub。
-**测试**: 124 passed (53+21+13+12+25)。workspace 全量需排除 omspbase-webrtc。
+**当前**: Phase 1。PipelineEngine 执行器完成并集成到 host/remote: 源并行、处理器链串行、Sink 扇出、热插拔 add/remove。WebRTC 数据通道 (webrtc-rs 0.12) 双实现 (stub + backend)。GStreamer 采集 + Apple VT 编码器 (H.264 硬编)，E2E 帧中继 host→server→remote 已验证。
+**MVP 成果**: 5 crate workspace, 125 tests。host(10 modules) + remote(9 modules) + server(8) + core(9) + webrtc(5)。
+**测试**: 125 passed (53+21+13+12+25)。
 **架构文档**: 15 篇模块文档 + 7 篇 SDD。审计 54/58 项已应用。
 **骨架**: WebRTC 路径为 stub。PluginManager::create_node 返回 Phase 2 错误。
 
@@ -95,6 +95,9 @@
 | D118 | MVP v2: Host→Server→Remote 三组件架构 | ✅ | 1 |
 | D119 | pixi 环境 + Transport de-stub + GStreamer 编译 | ✅ | 1 |
 | D120 | PipelineEngine: 源并行 + 处理器链串行 + Sink 扇出 + 热插拔 | ✅ | 1 |
+| D121 | webrtc-rs 0.12 重写: pure Rust 双实现 (stub + backend) | ✅ | 1 |
+| D122 | PipelineEngine host 集成: GstCaptureSource + WebrtcOutputSink 适配器 | ✅ | 1 |
+| D123 | PipelineEngine remote 集成: FrameSource + DecodeSink 适配器 | ✅ | 1 |
 | D-ERR-01 | 错误分类 | ✅ | 0 |
 | D-ERR-02 | 错误码编号 1xxx-9xxx | ✅ | 0 |
 | D-SEC-01 | 安全架构 mTLS+TLS+audit | ✅ | 0 |
@@ -112,8 +115,8 @@
 | Crate | 模块数 | 测试数 | 行数 | 状态 |
 |-------|:------:|:------:|------|:----:|
 | omspbase-core | 9 | 53 | ~1700 | ✅ |
-| omspbase-host | 9 | 21 | ~1336 | ✅ |
+| omspbase-host | 10 | 21 | ~1550 | ✅ |
 | omspbase-server | 8 | 25 | ~1423 | ✅ |
-| omspbase-remote | 8 | 13 | ~878 | ✅ |
-| omspbase-webrtc | 5 | 0 | ~449 | 🔴 stub |
-| **workspace total** | **40** | **124** | **~5743** | ✅ |
+| omspbase-remote | 9 | 13 | ~1050 | ✅ |
+| omspbase-webrtc | 5 | 0 | ~449 | ✅ dual |
+| **workspace total** | **41** | **125** | **~6000** | ✅ |
