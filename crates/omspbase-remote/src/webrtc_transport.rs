@@ -73,8 +73,11 @@ impl WebrtcTransport {
                         Some(DataChannelEvent::Open) => {
                             tracing::info!("Signaling: DataChannel opened (remote)");
                         }
-                        Some(DataChannelEvent::Message(DataMessage { data })) => {
-                            tracing::info!("Signaling: frame received via DataChannel ({} bytes)", data.len());
+Some(DataChannelEvent::Message(DataMessage { data })) => {
+let size = data.len();
+                            tracing::debug!("Signaling: frame received via DataChannel ({} bytes)", size);
+                            tracing::info!("Signaling: frame received via DataChannel ({} bytes)", size);
+                            let _ = frame_tx.send(data);
                             }
                             Some(DataChannelEvent::Closed) | None => break,
                             _ => {} // Open, Error — ignore
