@@ -49,6 +49,7 @@ mod imp {
             bitrate: u32,
             encoder: &str,
         ) -> Result<Self, CoreError> {
+            gstreamer::init().ok();
             let enc = resolve_encoder(encoder);
 
             let source_element = match capture.source.as_str() {
@@ -130,6 +131,7 @@ mod imp {
         }
 
         pub fn start(&self) -> Result<(), CoreError> {
+            tracing::info!("Pipeline: setting state to Playing");
             self.pipeline
                 .set_state(gstreamer::State::Playing)
                 .map_err(|e| CoreError::EncoderInit(format!("pipeline start: {e}")))?;
@@ -145,6 +147,7 @@ mod imp {
 
         /// Pull a sample from the appsink and return raw H.264 bytes.
         pub fn pull_sample(&self) -> Result<Vec<u8>, CoreError> {
+            tracing::info!("pull_sample: calling try_pull_sample...");
             let sample = self
                 .appsink
                 .try_pull_sample(gstreamer::ClockTime::from_seconds(5))
@@ -160,6 +163,7 @@ mod imp {
 
         /// Create a dummy pipeline for headless/E2E fallback.
         pub fn dummy() -> Self {
+            gstreamer::init().ok();
             let desc = "videotestsrc pattern=smpte ! videoconvert ! appsink name=sink";
             let pipeline = gstreamer::parse::launch(desc)
                 .expect("videotestsrc pipeline should always parse")

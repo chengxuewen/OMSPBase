@@ -50,7 +50,8 @@ impl SignalingClient {
     /// for sending SDP/ICE messages through the sender and reading relayed
     /// messages from the receiver.
     pub async fn connect(&self) -> Result<(WsSender, WsReceiver), CoreError> {
-        let url = format!("{}/ws", self.server_url);
+        let url = self.server_url.clone();
+        tracing::info!("Signaling: connecting to {url}");
         let (ws_stream, _resp) = connect_async(&url).await.map_err(|e| {
             CoreError::WebSocketDisconnect(format!("connect to {}: {}", url, e))
         })?;

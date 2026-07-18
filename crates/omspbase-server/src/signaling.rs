@@ -17,7 +17,7 @@ struct RoomChannel {
 
 impl RoomChannel {
     fn new() -> Self {
-        let (tx, _) = broadcast::channel::<String>(64);
+        let (tx, _) = broadcast::channel::<String>(4096); // ponytail: 4096 frames ~= 4s at 1k fps
         Self { tx }
     }
 }
@@ -67,9 +67,11 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
     let psk = std::env::var("OMSPBASE_PSK").ok();
     let auth = psk.as_ref().map(|k| SimplePskAuth::new(k.as_bytes()));
     let mut authenticated = auth.is_none();
+    tracing::info!("Auth: psk_set={}, authenticated={}", psk.is_some(), authenticated);
 
     // Phase 1: Authentication
     if !authenticated {
+        tracing::info!("Auth: waiting for PSK...");
         match receiver.next().await {
             Some(Ok(Message::Text(text))) => {
                 // ponytail: simple token-as-first-message; upgrade to challenge-response later
@@ -103,17 +105,21 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                 return;
             }
         }
-        let ack = SignalingMessage::Error {
-            code: 0,
-            message: "authenticated".into(),
-        };
-        let _ = sender
-            .send(Message::Text(serde_json::to_string(&ack).unwrap().into()))
-            .await;
     }
+
+    // Always send auth ack (or skip if no auth required)
+    let ack = SignalingMessage::Error {
+        code: 0,
+        message: "authenticated".into(),
+    };
+    let _ = sender
+        .send(Message::Text(serde_json::to_string(&ack).unwrap().into()))
+        .await;
+    tracing::info!("Auth ack sent, entering RoomJoin phase");
 
     // Phase 2: RoomJoin
     let (room_id, role) = loop {
+        tracing::debug!("RoomJoin: waiting for message...");
         match receiver.next().await {
             Some(Ok(Message::Text(text))) => {
                 let text_str = text.to_string();
@@ -173,29 +179,58 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
     // Spawn: broadcast → this peer's sender
     let mut relay_sender = sender;
     let relay_handle = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if relay_sender
-                .send(Message::Text(msg.into()))
-                .await
-                .is_err()
-            {
-                break;
+        loop {
+            match rx.recv().await {
+                Ok(msg) => {
+                    tracing::info!("Relay: forwarding to peer ({} bytes)", msg.len());
+                    if relay_sender
+                        .send(Message::Text(msg.into()))
+                        .await
+                        .is_err()
+                    {
+                        tracing::warn!("Relay: send failed, peer disconnected");
+                        break;
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("Relay: lagged behind by {} messages, continuing", n);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tracing::info!("Relay: broadcast channel closed");
+                    break;
+                }
             }
         }
     });
 
     // Forward: this peer's receiver → broadcast
+    tracing::info!("Entering forward loop for peer {}", relay_peer_id);
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(text) => {
                 let text_str = text.to_string();
-                if let Ok(sig_msg) = serde_json::from_str::<SignalingMessage>(&text_str) {
-                    if matches!(
+                // Try SignalingMessage first, then raw JSON for Frame
+                let should_relay = match serde_json::from_str::<SignalingMessage>(&text_str) {
+                    Ok(sig_msg) => matches!(
                         sig_msg,
                         SignalingMessage::Sdp { .. } | SignalingMessage::IceCandidate { .. }
                             | SignalingMessage::Frame { .. }
-                    ) {
-                        let _ = tx.send(text_str);
+                    ),
+                    Err(_) => {
+                        // Not a SignalingMessage — check for raw frame JSON
+                        if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text_str) {
+                            raw.get("type").and_then(|v| v.as_str()) == Some("frame")
+                        } else {
+                            false
+                        }
+                    }
+                };
+                if should_relay {
+                    match tx.send(text_str) {
+                        Ok(n) => tracing::debug!("Forward: broadcast to {} receivers", n),
+                        Err(tokio::sync::broadcast::error::SendError(_)) => {
+                            tracing::warn!("Forward: no receivers, message dropped");
+                        }
                     }
                 }
             }

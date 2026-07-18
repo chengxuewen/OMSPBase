@@ -27,6 +27,7 @@ impl DecodePipeline {
         height: u32,
         decoder: Option<&str>,
     ) -> Self {
+        gstreamer::init().ok();
         if let Some(dec) = decoder {
             tracing::info!(decoder = dec, "Remote decoder hint");
         }
@@ -43,8 +44,11 @@ impl DecodePipeline {
             .downcast::<gstreamer::Pipeline>()
             .expect("Pipeline downcast failed");
 
-        let appsrc: gstreamer_app::AppSrc = pipeline
-            .property("src");
+        let appsrc = pipeline
+            .by_name("src")
+            .expect("appsrc element not found")
+            .downcast::<gstreamer_app::AppSrc>()
+            .expect("Failed to downcast to AppSrc");
 
         tracing::info!(display = display_name, "Decode pipeline created");
         Self { pipeline, appsrc }

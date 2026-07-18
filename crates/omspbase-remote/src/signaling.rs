@@ -45,9 +45,9 @@ impl SignalingClient {
     /// Connect to the signaling server, authenticate, join a room,
     /// and enter the SDP/ICE relay loop. Blocks until disconnect.
     pub async fn connect(&self) -> Result<(), CoreError> {
-        let ws_url = format!("{}/ws", self.server_url);
+        let url = self.server_url.clone();
 
-        let (mut ws, _) = connect_async(&ws_url)
+        let (mut ws, _) = connect_async(&url)
             .await
             .map_err(|e| CoreError::WebSocketDisconnect(format!("connect failed: {e}")))?;
 
@@ -139,6 +139,7 @@ impl SignalingClient {
         // Step 5: SDP/ICE relay loop
         // ponytail: log messages for now; real SDP/ICE handler deferred to WebRTC integration
         while let Some(msg) = ws.next().await {
+            tracing::debug!("Signaling: received WS message in relay loop");
             match msg {
                 Ok(Message::Text(text)) => {
                     match serde_json::from_str::<SignalingMessage>(&text) {
@@ -151,7 +152,23 @@ impl SignalingClient {
                         Ok(SignalingMessage::RoomLeave { peer_id, .. }) => {
                             tracing::info!("Signaling: peer {peer_id} left room");
                         }
-                        Ok(_) => {}
+                        Ok(SignalingMessage::Frame { data_base64, .. }) => {
+                            match base64::engine::general_purpose::STANDARD.decode(&data_base64) {
+                                Ok(data) => {
+                                    let size = data.len();
+                                    if let Some(ref tx) = self.frame_tx {
+                                        if tx.send(data).is_err() {
+                                            tracing::warn!("Signaling: frame receiver dropped");
+                                        }
+                                    }
+                                    tracing::info!("Signaling: frame received ({size} bytes)");
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Signaling: base64 decode error: {e}");
+                                }
+                            }
+                        }
+                        Ok(_) => {} // ponytail: ignore uncharted variants (RoomJoin, Error, etc.)
                         Err(_e) => {
                             // Not a SignalingMessage — try raw JSON for Frame
                             if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -168,7 +185,7 @@ impl SignalingClient {
                                                         tracing::warn!("Signaling: frame receiver dropped");
                                                     }
                                                 }
-                                                tracing::debug!("Signaling: frame received ({size} bytes)");
+                                                tracing::info!("Signaling: frame received ({size} bytes)");
                                             }
                                             Err(e) => {
                                                 tracing::warn!("Signaling: base64 decode error: {e}");

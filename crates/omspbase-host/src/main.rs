@@ -123,7 +123,7 @@ async fn main() {
         .psk
         .clone()
         .unwrap_or_else(|| "omspbase-dev".to_string());
-    let room_id = format!("host-{}", config.capture.source);
+    let room_id = "default"; // ponytail: match remote for E2E
     let signaling_handle = tokio::spawn(async move {
         use signaling::SignalingClient;
         let client = SignalingClient::new(&signaling_url, &psk, &room_id);
@@ -133,6 +133,7 @@ async fn main() {
                 loop {
                     tokio::select! {
                         Some(frame_json) = frame_rx.recv() => {
+                            tracing::debug!("Relay: sending frame ({} bytes)", frame_json.len());
                             if let Err(e) = sender.send(Message::Text(frame_json.into())).await {
                                 tracing::warn!("Failed to send frame via WS: {e}");
                             }
@@ -189,9 +190,9 @@ async fn main() {
                 }
                 Err(e) => {
                     tracing::warn!("Pipeline pull error: {e}");
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 }
             }
+            tokio::time::sleep(std::time::Duration::from_millis(33)).await; // ponytail: ~30fps throttle
         }
     });
 
@@ -229,7 +230,6 @@ async fn main() {
     metrics_updater.abort();
     signaling_handle.abort();
 
-    tracing::info!("Shutdown complete");
 }
 
 /// Parse "WIDTHxHEIGHT" into (width, height). Defaults to 1280x720.
