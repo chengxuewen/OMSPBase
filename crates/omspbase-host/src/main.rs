@@ -224,9 +224,10 @@ async fn main() {
                 }
                 Err(e) => {
                     tracing::warn!("Pipeline pull error: {e}");
+                    // ponytail: backoff on error — pull_sample already blocks 100ms
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_millis(33)).await; // ponytail: ~30fps throttle
         }
     });
 

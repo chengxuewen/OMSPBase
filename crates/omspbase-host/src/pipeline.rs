@@ -78,7 +78,7 @@ mod imp {
 
             let pipeline_desc = format!(
                 "{source} ! videoconvert ! video/x-raw,format=I420,width={w},height={h},framerate={fps}/1 \
-                 ! {enc} bitrate={br} ! h264parse ! appsink name=sink",
+                 ! {enc} bitrate={br} ! h264parse ! appsink name=sink sync=false",
                 source = source_element,
                 w = width,
                 h = height,
@@ -149,10 +149,9 @@ mod imp {
 
         /// Pull a sample from the appsink and return raw H.264 bytes.
         pub fn pull_sample(&self) -> Result<Vec<u8>, CoreError> {
-            tracing::info!("pull_sample: calling try_pull_sample...");
             let sample = self
                 .appsink
-                .try_pull_sample(gstreamer::ClockTime::from_seconds(5))
+                .try_pull_sample(gstreamer::ClockTime::from_mseconds(100))
                 .ok_or_else(|| CoreError::EncoderInit("appsink pulled None".into()))?;
             let buffer = sample
                 .buffer()
