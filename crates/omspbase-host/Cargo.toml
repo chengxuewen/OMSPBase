@@ -43,6 +43,7 @@ sha2 = "0.10"
 # WebSocket client for signaling
 tokio-tungstenite = { version = "0.24", features = ["connect"] }
 futures-util = "0.3"
+base64 = "0.22"
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }

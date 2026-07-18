@@ -12,8 +12,9 @@
 
 use std::process;
 
-use futures_util::StreamExt;
-
+use futures_util::{SinkExt, StreamExt};
+use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::Message;
 mod config;
 mod control;
 mod emergency;
@@ -86,8 +87,8 @@ async fn main() {
     }
 
     // Phase 3: Create WebRTC transport
-    let transport = transport::Transport::new();
-
+    let (frame_tx, mut frame_rx) = mpsc::unbounded_channel::<String>();
+    let transport = transport::Transport::new_with_sender(frame_tx);
     // Phase 4: Create control handler (shared with metrics)
     let control_handler = control::ControlHandler::new();
     let frames_dropped = control_handler.frames_dropped.clone();
@@ -127,12 +128,28 @@ async fn main() {
         use signaling::SignalingClient;
         let client = SignalingClient::new(&signaling_url, &psk, &room_id);
         match client.connect().await {
-            Ok((mut _sender, mut receiver)) => {
+            Ok((mut sender, mut receiver)) => {
                 tracing::info!("Signaling connected, entering relay loop");
-                // ponytail: single relay loop, add SDP exchange when Remote joins
-                while let Some(Ok(msg)) = receiver.next().await {
-                    if let Ok(text) = msg.to_text() {
-                        tracing::debug!("Relay received: {}", text);
+                loop {
+                    tokio::select! {
+                        Some(frame_json) = frame_rx.recv() => {
+                            if let Err(e) = sender.send(Message::Text(frame_json.into())).await {
+                                tracing::warn!("Failed to send frame via WS: {e}");
+                            }
+                        }
+                        Some(msg) = receiver.next() => {
+                            match msg {
+                                Ok(msg) => {
+                                    if let Ok(text) = msg.to_text() {
+                                        tracing::debug!("Relay received: {}", text);
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("WS receive error: {e}");
+                                }
+                            }
+                        }
+                        else => break,
                     }
                 }
                 tracing::warn!("Signaling relay loop ended");

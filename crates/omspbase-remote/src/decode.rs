@@ -4,6 +4,8 @@
 
 use omspbase_core::error::CoreError;
 
+#[cfg(feature = "gstreamer")]
+use gstreamer::prelude::*;
 /// GStreamer decode pipeline with appsrc input.
 ///
 /// Pipeline: appsrc (H.264 byte-stream) → decodebin → videoconvert → videoscale → autovideosink
@@ -41,9 +43,8 @@ impl DecodePipeline {
             .downcast::<gstreamer::Pipeline>()
             .expect("Pipeline downcast failed");
 
-        let appsrc = pipeline
-            .property::<gstreamer_app::AppSrc>("src")
-            .expect("Failed to get appsrc element");
+        let appsrc: gstreamer_app::AppSrc = pipeline
+            .property("src");
 
         tracing::info!(display = display_name, "Decode pipeline created");
         Self { pipeline, appsrc }
@@ -74,7 +75,7 @@ impl DecodePipeline {
             .map_err(|_| CoreError::OutOfMemory)?;
         {
             let buffer_ref = buffer.make_mut();
-            buffer_ref.copy_from_slice(data);
+            buffer_ref.copy_from_slice(0, data).map_err(|e| CoreError::Unknown(format!("buffer copy: {e}")))?;
         }
         self.appsrc
             .push_buffer(buffer)

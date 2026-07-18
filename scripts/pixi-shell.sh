@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# pixi-shell.sh — Activate pixi environment in current shell
+# Source this file: source scripts/pixi-shell.sh
+# Do NOT run as a subshell (./pixi-shell.sh) — env vars would be lost.
+
+set -euo pipefail
+
+SCRIPT_DIR_PSHELL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+source "${SCRIPT_DIR_PSHELL}/_common.sh"
+
+echo "Activating OMSPBase pixi environment..."
+eval "$("${PIXI_BIN}" shell-hook --manifest-path "${PROJECT_ROOT}/pixi.toml" --shell bash)"
+
+echo ""
+echo "OMSPBase environment active."
+echo "  pixi run build     — cargo build --workspace"
+echo "  pixi run test      — cargo test --workspace"
+echo "  pixi run lint      — cargo clippy + fmt check"
+echo "  pixi run check     — cargo check"
+echo ""
+echo "Deactivate with: exit  (or close this shell)"

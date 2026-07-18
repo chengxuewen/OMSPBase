@@ -1,0 +1,63 @@
+[workspace]
+name = "OMSPBase"
+channels = ["conda-forge"]
+platforms = ["osx-64", "osx-arm64", "linux-64"]
+version = "0.1.0"
+
+# Phase 1 base dependencies — always installed (Rust + GStreamer)
+[dependencies]
+rust = ">=1.85.0,<2"
+flatbuffers = ">=24.3.25,<26"
+python = "3.12.*"
+pip = ">=24.0,<26"
+ripgrep = ">=14.1.0,<15"
+# GStreamer 1.24+ (gstreamer-rs 0.23 min=1.14, tested=1.24)
+gstreamer = ">=1.24.0,<2"
+gst-plugins-base = ">=1.24.0,<2"
+gst-plugins-good = ">=1.24.0,<2"
+gst-plugins-bad = ">=1.24.0,<2"
+pkg-config = ">=0.29.2,<1"
+zlib = ">=1.2,<2"
+
+# Development tools (cmake for webrtc-sys, lld for fast linking, extra GStreamer codecs)
+[feature.dev.dependencies]
+cmake = ">=3.28.0,<4"
+lld = ">=18.0,<19"
+gst-plugins-ugly = ">=1.24.0,<2"
+gst-libav = ">=1.24.0,<2"
+
+[feature.dev.tasks]
+build = "cargo build --workspace"
+check = "cargo check --workspace"
+lint = { cmd = "cargo clippy --workspace --all-targets -- -D warnings", "depends-on" = ["build"] }
+format = "cargo fmt --all -- --check"
+format-fix = "cargo fmt --all"
+audit = "cargo deny check"
+
+# Testing tools (coverage via cargo-tarpaulin, not in conda-forge)
+[feature.test.dependencies]
+
+[feature.test.tasks]
+test = "cargo test --workspace"
+coverage = "cargo tarpaulin --workspace --out Html --out Lcov"
+
+# CI tools (lightweight CI stages)
+[feature.ci.dependencies]
+
+[feature.ci.tasks]
+ci-check = "cargo check --workspace"
+ci-lint = "cargo clippy --workspace --all-targets -- -D warnings"
+ci-test = "cargo test --workspace"
+
+# Environments — composable feature groups
+[environments]
+runtime = { features = [] }
+dev = { features = ["dev"] }
+test = { features = ["dev", "test"] }
+ci = { features = ["dev", "test", "ci"] }
+default = { features = ["dev", "test"] }
+
+# Global tasks (available in all environments)
+[tasks]
+init = "scripts/pixi-init.sh"
+shell = "scripts/pixi-shell.sh"

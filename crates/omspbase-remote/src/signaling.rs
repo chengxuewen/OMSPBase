@@ -2,19 +2,19 @@
 //!
 //! Handles: PSK auth → RoomJoin → RoomJoined → SDP/ICE relay loop.
 
+use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use omspbase_core::error::CoreError;
 use omspbase_core::protocol::{PeerRole, SignalingMessage};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
-
 /// Manages the signaling WebSocket lifecycle: auth, room join, message relay.
 pub struct SignalingClient {
     server_url: String,
     psk: String,
     room_id: String,
+    frame_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
 }
-
 impl SignalingClient {
     /// Create a new signaling client.
     ///
@@ -25,9 +25,23 @@ impl SignalingClient {
             server_url: server_url.to_string(),
             psk: psk.to_string(),
             room_id: room_id.to_string(),
+            frame_tx: None,
         }
     }
 
+    pub fn new_with_frame_tx(
+        server_url: &str,
+        psk: &str,
+        room_id: &str,
+        frame_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    ) -> Self {
+        Self {
+            server_url: server_url.to_string(),
+            psk: psk.to_string(),
+            room_id: room_id.to_string(),
+            frame_tx: Some(frame_tx),
+        }
+    }
     /// Connect to the signaling server, authenticate, join a room,
     /// and enter the SDP/ICE relay loop. Blocks until disconnect.
     pub async fn connect(&self) -> Result<(), CoreError> {
@@ -138,8 +152,37 @@ impl SignalingClient {
                             tracing::info!("Signaling: peer {peer_id} left room");
                         }
                         Ok(_) => {}
-                        Err(e) => {
-                            tracing::warn!("Signaling: parse error: {e}");
+                        Err(_e) => {
+                            // Not a SignalingMessage — try raw JSON for Frame
+                            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text) {
+                                if raw.get("type").and_then(|v| v.as_str()) == Some("frame") {
+                                    if let Some(b64) = raw
+                                        .get("data_base64")
+                                        .and_then(|v| v.as_str())
+                                    {
+                                        match base64::engine::general_purpose::STANDARD.decode(b64) {
+                                            Ok(data) => {
+                                                let size = data.len();
+                                                if let Some(ref tx) = self.frame_tx {
+                                                    if tx.send(data).is_err() {
+                                                        tracing::warn!("Signaling: frame receiver dropped");
+                                                    }
+                                                }
+                                                tracing::debug!("Signaling: frame received ({size} bytes)");
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!("Signaling: base64 decode error: {e}");
+                                            }
+                                        }
+                                    } else {
+                                        tracing::warn!("Signaling: frame missing data_base64");
+                                    }
+                                } else {
+                                    tracing::warn!("Signaling: unknown message: {}", &text[..text.len().min(120)]);
+                                }
+                            } else {
+                                tracing::warn!("Signaling: parse error: {_e}");
+                            }
                         }
                     }
                 }

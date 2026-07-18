@@ -55,6 +55,16 @@ pub enum SignalingMessage {
         code: u16,
         message: String,
     },
+
+    /// Encoded media frame relayed through Server.
+    /// data_base64 is encoded as base64 (JSON-safe).
+    Frame {
+        room_id: String,
+        codec: String,
+        sequence: u64,
+        is_keyframe: bool,
+        data_base64: String,
+    },
 }
 
 /// Role of a peer in a room.

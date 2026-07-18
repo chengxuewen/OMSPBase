@@ -193,6 +193,7 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                     if matches!(
                         sig_msg,
                         SignalingMessage::Sdp { .. } | SignalingMessage::IceCandidate { .. }
+                            | SignalingMessage::Frame { .. }
                     ) {
                         let _ = tx.send(text_str);
                     }

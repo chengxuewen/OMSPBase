@@ -104,7 +104,7 @@ mod imp {
                             tracing::error!(
                                 src = ?err.src(),
                                 error = %err.error(),
-                                debug = err.debug(),
+                        debug = ?err.debug(),
                                 "GStreamer pipeline error"
                             );
                         }
@@ -112,7 +112,7 @@ mod imp {
                             tracing::warn!(
                                 src = ?warn.src(),
                                 error = %warn.error(),
-                                debug = warn.debug(),
+                                debug = ?warn.debug(),
                                 "GStreamer pipeline warning"
                             );
                         }
@@ -148,7 +148,6 @@ mod imp {
             let sample = self
                 .appsink
                 .try_pull_sample(gstreamer::ClockTime::from_seconds(5))
-                .map_err(|_| CoreError::CaptureDisconnected)?
                 .ok_or_else(|| CoreError::EncoderInit("appsink pulled None".into()))?;
             let buffer = sample
                 .buffer()
@@ -157,6 +156,22 @@ mod imp {
                 .map_readable()
                 .map_err(|_| CoreError::EncoderInit("failed to map buffer".into()))?;
             Ok(map.to_vec())
+        }
+
+        /// Create a dummy pipeline for headless/E2E fallback.
+        pub fn dummy() -> Self {
+            let desc = "videotestsrc pattern=smpte ! videoconvert ! appsink name=sink";
+            let pipeline = gstreamer::parse::launch(desc)
+                .expect("videotestsrc pipeline should always parse")
+                .downcast::<gstreamer::Pipeline>()
+                .expect("downcast to Pipeline");
+            let appsink = pipeline
+                .by_name("sink")
+                .expect("sink element")
+                .downcast::<gstreamer_app::AppSink>()
+                .expect("downcast to AppSink");
+            tracing::info!("Pipeline dummy (fallback videotestsrc)");
+            Pipeline { pipeline, appsink }
         }
 }
 }

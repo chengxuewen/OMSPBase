@@ -1280,6 +1280,7 @@ name = "omspbase-host"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "chrono",
  "futures-util",
  "gstreamer",
@@ -1306,6 +1307,7 @@ name = "omspbase-remote"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64",
  "futures-util",
  "gstreamer",
  "gstreamer-app",

@@ -83,10 +83,13 @@ async fn main() {
     };
     // Phase 5: Connect to server signaling via WebSocket
     let psk = config.psk.as_deref().unwrap_or("omspbase-dev").to_string();
-    let signaling = signaling::SignalingClient::new(
+    let (frame_tx, frame_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+
+    let signaling = signaling::SignalingClient::new_with_frame_tx(
         &config.server.signaling_url,
         &psk,
         "default",
+        frame_tx,
     );
     tokio::spawn(async move {
         if let Err(e) = signaling.connect().await {
@@ -94,6 +97,24 @@ async fn main() {
         }
     });
     tracing::info!("Signaling connection initiated to {}", config.server.signaling_url);
+
+    let mut transport = transport::Transport::new_with_receiver(
+        &config.server.signaling_url,
+        frame_rx,
+    );
+    tokio::spawn(async move {
+        loop {
+            match transport.receive_frame().await {
+                Ok(data) => {
+                    tracing::info!("Frame received: {} bytes", data.len());
+                }
+                Err(e) => {
+                    tracing::error!("Frame receive error: {e}");
+                    break;
+                }
+            }
+        }
+    });
 
     // Report ready: active_connections bumped for startup
     metrics.active_connections.inc();
