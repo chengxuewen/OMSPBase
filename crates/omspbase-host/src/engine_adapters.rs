@@ -156,15 +156,13 @@ impl MediaSource for GstCaptureSource {
 
 pub struct WebrtcOutputSink {
     transport: Arc<crate::webrtc_transport::WebrtcTransport>,
-    rt: tokio::runtime::Handle,
 }
 
 impl WebrtcOutputSink {
     pub fn new(
         transport: Arc<crate::webrtc_transport::WebrtcTransport>,
-        rt: tokio::runtime::Handle,
     ) -> Self {
-        Self { transport, rt }
+        Self { transport }
     }
 }
 
@@ -203,12 +201,15 @@ impl MediaSink for WebrtcOutputSink {
     type Input = InternalPacket;
 
     fn on_fragment(&mut self, fragment: Self::Input) -> Result<()> {
-        // ponytail: block_on is cheap when the DC is already open (most sends return immediately)
         let payload = match fragment {
             InternalPacket::Encoded(f) => f.payload,
             _ => return Ok(()),
         };
-        self.rt
-            .block_on(self.transport.send_frame(&payload))
+        let transport = self.transport.clone();
+        // ponytail: tokio::spawn avoids block_on panic (we're already inside a runtime)
+        tokio::spawn(async move {
+            let _ = transport.send_frame(&payload).await;
+        });
+        Ok(())
     }
 }

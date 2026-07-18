@@ -136,6 +136,9 @@ async fn main() {
             tracing::error!("Signaling connection failed: {e}");
             process::exit(1);
         });
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // ponytail: wait for remote to join room before sending SDP offer
 
     let (webrtc_transport, dc_events) =
         webrtc_transport::WebrtcTransport::new(ws_sender, room_id)
@@ -159,7 +162,15 @@ async fn main() {
                             serde_json::from_str::<SignalingMessage>(text)
                         {
                             match sig_msg {
-                                SignalingMessage::Sdp { sdp, .. } => {
+SignalingMessage::Sdp { sdp, .. } => {
+                                    // ponytail: ignore offer echo from server relay; only process answers
+                                    let sdp_type = serde_json::from_str::<serde_json::Value>(&sdp)
+                                        .ok()
+                                        .and_then(|v| v.get("type")?.as_str().map(String::from));
+                                    if sdp_type.as_deref() != Some("answer") {
+                                        tracing::debug!("Ignoring non-answer SDP (type={sdp_type:?})");
+                                        continue;
+                                    }
                                     tracing::info!("Received SDP answer, setting remote description");
                                     match ws_webrtc.handle_answer(&sdp).await {
                                         Ok(()) => tracing::info!("Remote description set"),
@@ -174,7 +185,8 @@ async fn main() {
                                     }).to_string();
                                     match ws_webrtc.handle_remote_ice(&candidate_json).await {
                                         Ok(()) => tracing::debug!("ICE candidate added"),
-                                        Err(e) => tracing::error!("Failed to add ICE: {e}"),
+                                        // ponytail: ICE-before-SDP race is expected; non-fatal
+                                        Err(e) => tracing::debug!("ICE candidate deferred: {e}"),
                                     }
                                 }
                                 SignalingMessage::RoomLeave { .. } => {
@@ -223,7 +235,6 @@ async fn main() {
         vec![],
         vec![Box::new(engine_adapters::WebrtcOutputSink::new(
             push_webrtc.clone(),
-            tokio::runtime::Handle::current(),
         ))],
     ).expect("Failed to add capture chain");
 
