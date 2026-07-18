@@ -24,7 +24,8 @@ mod imp {
         }
         #[cfg(target_os = "macos")]
         {
-            return "vt264enc";
+            // ponytail: vtenc_h264 is the Apple VideoToolbox encoder from applemedia plugin
+            return "vtenc_h264";
         }
         #[cfg(target_os = "linux")]
         {
@@ -35,6 +36,7 @@ mod imp {
         {
             "x264enc"
         }
+
     }
 
     impl Pipeline {
