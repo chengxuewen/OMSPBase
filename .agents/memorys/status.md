@@ -1,17 +1,14 @@
 # OMSPBase Status
 
-> 生成: 2026-07-18 | 决策数量: 150+ (D1-D119) | Phase: 1 | 117 tests passing | pixi 环境就绪
+> 生成: 2026-07-18 | 决策数量: 150+ (D1-D120) | Phase: 1 | 124 tests passing | pixi 环境就绪
 
 ## Phase
 
-**当前**: Phase 1 基础设施完善。pixi 环境就绪 (GStreamer 1.28.5 + Rust 1.85)。Transport 帧通路完成 (host→mpsc→WS→server→WS→mpsc→remote)。GStreamer host/remote 编译通过。omspbase-webrtc default 改为 []。
-**MVP 成果**: 5 crate workspace。omspbase-core 微内核 (PipelineEngine/PluginManager/FragmentBroadcaster) + omspbase-host/server/remote 应用 + omspbase-webrtc FFI stub。
-**测试**: 4 app crates: 117 passed (8 suites)。workspace 全量需排除 omspbase-webrtc (libwebrtc 未预编译)。
-**架构文档**: 15 篇模块文档 (含 13-server / 14-remote)。7 篇 SDD (docs/sdd/)。审计 54/58 项已应用。
-**审计**: 2026-07-17 doc-audit 完成，54/58 项修复已应用。
+**当前**: Phase 1。PipelineEngine 执行器完成 (D120): 源并行、处理器链串行、Sink 扇出、热插拔 add/remove。GStreamer 采集测试 CFG-gated。
+**MVP 成果**: 5 crate workspace, 124 tests。omspbase-core (9 modules: PipelineEngine/PluginManager/FragmentBroadcaster) + host/server/remote + webrtc stub。
+**测试**: 124 passed (53+21+13+12+25)。workspace 全量需排除 omspbase-webrtc。
+**架构文档**: 15 篇模块文档 + 7 篇 SDD。审计 54/58 项已应用。
 **骨架**: WebRTC 路径为 stub。PluginManager::create_node 返回 Phase 2 错误。
-
-**当前**: Phase 0 架构定义完成 → MVP 实施提案 ready (.sisyphus/plans/mvp-host-remote/)，骨架代码已创建 (crates/omspbase-{host,remote,server})
 
 ## 决策状态
 
@@ -96,6 +93,8 @@
 | D116 | STRIDE-Lite 威胁模型 | ✅ | 0 |
 | D117 | 紧急停止+控制安全 | ✅ | 0 |
 | D118 | MVP v2: Host→Server→Remote 三组件架构 | ✅ | 1 |
+| D119 | pixi 环境 + Transport de-stub + GStreamer 编译 | ✅ | 1 |
+| D120 | PipelineEngine: 源并行 + 处理器链串行 + Sink 扇出 + 热插拔 | ✅ | 1 |
 | D-ERR-01 | 错误分类 | ✅ | 0 |
 | D-ERR-02 | 错误码编号 1xxx-9xxx | ✅ | 0 |
 | D-SEC-01 | 安全架构 mTLS+TLS+audit | ✅ | 0 |
@@ -108,32 +107,13 @@
 | D-OPS-09 | 8 Prometheus 告警规则 | ✅ | 0 |
 | D-OPS-10 | Host 升级策略 | ✅ | 0 |
 
-## 文档清单
-
-### 架构文档 (docs/modules/)
-00-overview.md · 01-product-capabilities.md · 02-deployment-modes.md · 03-client-host.md · 04-sdk-layers.md · 05-auth-permissions.md · 06-plugin-system.md · 07-protocols.md · 08-pipeline-model.md · 09-transport-architecture.md · 10-signaling-architecture.md · 11-napi-binding.md · 12-recording-playback.md · 13-server-architecture.md · 14-remote-architecture.md
-
-### SDD 文档 (docs/sdd/)
-README.md · 01-camera-capture.md · 02-webrtc-push.md · 03-decode-render.md · 04-datachannel-control.md · 05-host-web-config.md · 06-server-monitoring.md · 07-emergency-stop.md
-
-### 审计报告
-docs/doc-audit-2026-07-17.md · 54/58 项修复已应用
-00-overview.md · 01-product-capabilities.md · 02-deployment-modes.md · 03-client-host.md · 04-sdk-layers.md · 05-auth-permissions.md · 06-plugin-system.md · 07-protocols.md · 08-pipeline-model.md · 09-transport-architecture.md · 10-signaling-architecture.md · 11-napi-binding.md · 12-recording-playback.md
-
-### 实施提案
-
-**.sisyphus/plans/mvp-host-remote/** — 32 任务，~3300 行
-### 实施提案
-
-.sisyphus/plans/mvp-host-remote/proposal.md · design.md · tasks.md
-
-### 源码统计 (crates/)
+## 源码统计 (crates/)
 
 | Crate | 模块数 | 测试数 | 行数 | 状态 |
 |-------|:------:|:------:|------|:----:|
-| omspbase-core | 8 | 47 | ~1100 | ✅
-| omspbase-host | 9 | 13 | ~600 | ✅ |
-| omspbase-server | 8 | 20 + 26(E2E) | ~650 | ✅ |
-| omspbase-remote | 8 | 11 | ~500 | ✅ |
-| omspbase-webrtc | 5 | 0 | ~450 | 🔴 stub
-| **workspace total** | **39** | **117** | **~2800** | ✅
+| omspbase-core | 9 | 53 | ~1700 | ✅ |
+| omspbase-host | 9 | 21 | ~1336 | ✅ |
+| omspbase-server | 8 | 25 | ~1423 | ✅ |
+| omspbase-remote | 8 | 13 | ~878 | ✅ |
+| omspbase-webrtc | 5 | 0 | ~449 | 🔴 stub |
+| **workspace total** | **40** | **124** | **~5743** | ✅ |

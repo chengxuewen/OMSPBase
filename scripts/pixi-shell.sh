@@ -19,3 +19,6 @@ echo "  pixi run lint      — cargo clippy + fmt check"
 echo "  pixi run check     — cargo check"
 echo ""
 echo "Deactivate with: exit  (or close this shell)"
+
+# Set DYLD_LIBRARY_PATH for GStreamer runtime linking on macOS
+export DYLD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${DYLD_LIBRARY_PATH:-}"
