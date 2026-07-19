@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Config for omspbase-host (capture + encode + push).
+/// Config for omspbase-remote-host (capture + encode + push — field/vehicle side).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostConfig {
     /// Config schema version for migration compatibility.
@@ -49,7 +49,7 @@ pub struct ServerConfig {
     pub rate_limit: u32,
 }
 
-/// Config for omspbase-remote (pull + decode + control).
+/// Config for omspbase-remote-client (pull + decode + control — cockpit/operator side).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteConfig {
     /// Config schema version.
