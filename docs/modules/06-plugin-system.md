@@ -28,6 +28,20 @@ omspbase-core (微内核)
 /// OBS 的 obs_source_info 模式：struct-of-callbacks 注册。
 
 pub trait Plugin: Send + Sync {
+    /// 插件名称
+    fn name(&self) -> &str;
+    /// 语义化版本
+    fn version(&self) -> (u16, u16, u16);
+    /// 插件类别: MediaSource | MediaProcessor | MediaSink (对齐 architecture.md §4.2)
+    fn category(&self) -> PluginCategory;
+    /// 能力声明: D30 注册时声明，非运行时探测
+    fn capabilities(&self) -> Vec<PluginCapability>;
+
+    /// 初始化: Phase 0 compile-time, Phase 2+ dlopen
+    fn init(&self, ctx: &PluginContext) -> Result<()>;
+    /// 关闭/清理
+    fn shutdown(&self) -> Result<()>;
+}
     fn name(&self) -> &str;
     fn version(&self) -> (u16, u16, u16);
     fn kind(&self) -> PluginKind;
@@ -35,11 +49,6 @@ pub trait Plugin: Send + Sync {
 
     fn on_load(&self) -> Result<()>;
     fn on_unload(&self) -> Result<()>;
-}
-
-pub enum PluginKind {
-    CompileTime,   // 编译进入的 feature-gated 插件（零运行时开销）
-    RunTime,       // dlopen 加载的动态插件（ABI 稳定 trait 接口）
 }
 ```
 

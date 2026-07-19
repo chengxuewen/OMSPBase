@@ -9,11 +9,10 @@
 ```rust
 #[async_trait]
 trait AuthProvider: Send + Sync {
-    async fn authenticate(&self, credential: &Credential) -> Result<User, AuthError>;
+    async fn login(&self, credential: &Credential) -> Result<User, AuthError>;
+    async fn validate(&self, token: &str) -> Result<User, AuthError>;
     async fn authorize(&self, user_id: &str, permission: &Permission) -> Result<bool, AuthError>;
-    async fn get_permissions(&self, user_id: &str) -> Result<HashSet<Permission>, AuthError>;
 }
-```
 
 两种实现：
 - **Local**：SQLite + JWT，独立部署使用
