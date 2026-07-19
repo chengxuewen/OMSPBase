@@ -23,7 +23,7 @@
 | 组件 | 选型 | 理由 |
 |------|------|------|
 | **核心语言** | Rust (edition 2024) | 零成本抽象、内存安全、跨平台 |
-| **WebRTC 栈** | libwebrtc (主) / str0m (LAN) / webrtc-rs (future) | MVP Phase 1: libwebrtc P2P
+| **WebRTC 栈** | webrtc-sys (libwebrtc FFI, 默认) / str0m (LAN) / mediasoup-sys (Phase 2, D118) | MVP Phase 1: libwebrtc P2P + RTP Track 级 API
 | **GPU 编码** | libloading 桥接 NVENC/VAAPI/VT | 避免编译时绑定 GPU SDK |
 | **编解码** | GStreamer (gst-plugins-rs) | 覆盖全，生态成熟 |
 | **信令** | WebSocket (Phase 1) + MQTT 5.0 (Phase 2+) | D74
@@ -36,11 +36,11 @@
 
 ## 三、关键设计决策
 
-### 3.1 默认 relay + P2P 可选 (D96)
+### 3.1 MVP v2 中继模型 (D118)
 
-连接默认走 SFU/TURN 中继，P2P 穿透在生产网络不可靠。仅 AUDESYS Studio LAN 场景开启 P2P。
+MVP 采用 3 组件中继架构：Host → Server(relay) → Client。Server 负责信令中继和媒体转发，P2P 穿透仅 AUDESYS Studio LAN 场景开启。mediasoup SFU 作为 Phase 2 多方会议后端（D118 附录），MVP Phase 1 优先完成 1:1 relay。
 
-行业共识，所有产品均采用此连接策略。默认走 SFU/TURN 中继 (D96 relay-default)。
+行业共识，所有产品均采用此连接策略。默认走 SFU/TURN 中继 (D118 relay-default)。
 
 ### 3.2 UDP 为第一优先级传输协议
 

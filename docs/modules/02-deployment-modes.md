@@ -67,6 +67,10 @@ omspbase-server --config /etc/omspbase/config.toml
 omspbase-client  # 启动桌面 GUI
 ```
 
+**Phase 1 运维策略**：
+- systemd service 配置 `Restart=always` + `RestartSec=5s`（D155）
+- 单进程部署：Host 功能内聚于 omspbase-remote-host（D155 决策）
+
 ---
 
 ## 四、AUDEBase 模块 — Docker 容器
@@ -80,3 +84,12 @@ omspbase-client  # 启动桌面 GUI
 - 配置：`auth.mode: "aude"`
 
 **类比**：类似 Jira 安装在群晖上，使用 DSM 的 LDAP 账户。
+
+---
+
+## Docker Phase 2 规划
+
+MVP Phase 1 以单进程 systemd 为主。Phase 2 引入 Docker 化：
+- docker-compose 多服务编排（Server + Client + Host 分离）
+- 容器健康检查与自动重启
+- Kubernetes readiness/liveness probe

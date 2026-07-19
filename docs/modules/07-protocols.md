@@ -81,3 +81,23 @@ flags:
 ### MQTT 5.0 (Phase 2+)
 
 MQTT 5.0 is planned for Phase 2+ vehicle-to-cloud signaling scenarios. Phase 1 uses WebSocket exclusively. Key features: session persistence, shared subscriptions, request-response pattern. 参见决策 D74。
+
+---
+
+## 四、WebRTC 后端
+
+OMSPBase 支持三个 WebRTC 后端，通过 Cargo feature gate 切换：
+
+| 后端 | Feature Gate | 用途 | 阶段 |
+|------|-------------|------|------|
+| **webrtc-sys** (libwebrtc FFI) | `webrtc-libwebrtc` | 默认后端，完整 WebRTC 支持 | Phase 1+ |
+| **str0m** | `webrtc-str0m` | sans-I/O，轻量纯 Rust | Phase 1 (LAN) |
+| **mediasoup-sys** | `webrtc-mediasoup` | SFU 多方会议 | Phase 2 |
+
+决策依据：D137 (libwebrtc FFI 选型), D139 (webrtc-sys crate 定义), D118 (mediasoup SFU 规划)。
+
+### 4.1 webrtc-sys（默认后端）
+
+webrtc-sys 通过 FFI 绑定 Google libwebrtc，提供完整 PeerConnection + RTP Track API。
+作为默认 Cargo feature (`default = ["webrtc-libwebrtc"]`) 编译。
+参见 `crates/webrtc-sys/`。

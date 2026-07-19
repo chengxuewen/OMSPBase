@@ -1,7 +1,7 @@
 # OMSPBase 产品参考文档
 
-> Phase 0 — 架构定义阶段 | 2026-07-16
-> 基于 [架构设计文档](../architecture.md) 与四份产品调研报告
+> Phase 0 → Phase 5 规划中 | 2026-07-20 | 决策数: 155+ (D1-D155)
+> MVP v2 中继模型 (D118) · Host 单进程 (D155) · 基于 [架构设计文档](../architecture.md)
 
 ---
 
@@ -19,12 +19,17 @@
 10. [信令架构](./10-signaling-architecture.md)
 11. [NAPI 绑定](./11-napi-binding.md)
 12. [录制与回放](./12-recording-playback.md)
+13. [服务端架构](./13-server-architecture.md)
+14. [Remote 架构](./14-remote-architecture.md)
+15. [Component 架构](./15-component-architecture.md)
+
+**Phase 2+**: 16-admin-dashboard, operations, security-architecture, sfu-mediasoup-integration, upgrade-migration, testing-strategy, error-model, ci-cd-pipeline (创建中)
 
 ---
 
 ## 概述
 
-OMSPBase 是 AUDE 生态的多媒体基础设施，提供七大产品能力。采用微内核 + 插件架构，支持多种部署形态。
+OMSPBase 是 AUDE 生态的多媒体基础设施，提供七大产品能力。核心 crate：omspbase-remote-host（采集+编码+推流）、omspbase-remote-client（拉流+解码+控制）、omspbase-server（信令+relay+监控）。Phase 1-2 采用 Host 单进程 (D155)，Phase 0-5 整体规划见架构文档。
 
 ```
 AUDESYS (工业控制) ──┐              ┌── AUDEBase (企业应用)
