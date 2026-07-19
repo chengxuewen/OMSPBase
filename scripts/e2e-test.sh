@@ -47,8 +47,8 @@ else
 fi
 
 # --- Start Host ---
-echo -e "${GREEN}[3/5] Starting omspbase-host (headless)...${NC}"
-"$BUILD_DIR/omspbase-host" --config /dev/null 2>&1 &
+echo -e "${GREEN}[3/5] Starting omspbase-remote-host (headless)...${NC}"
+"$BUILD_DIR/omspbase-remote-host" --config /dev/null 2>&1 &
 HOST_PID=$!
 echo "$HOST_PID" >> "$PID_FILE"
 sleep 1
@@ -62,8 +62,8 @@ else
 fi
 
 # --- Start Remote ---
-echo -e "${GREEN}[4/5] Starting omspbase-remote (headless)...${NC}"
-"$BUILD_DIR/omspbase-remote" --config /dev/null 2>&1 &
+echo -e "${GREEN}[4/5] Starting omspbase-remote-client (headless)...${NC}"
+"$BUILD_DIR/omspbase-remote-client" --config /dev/null 2>&1 &
 REMOTE_PID=$!
 echo "$REMOTE_PID" >> "$PID_FILE"
 sleep 1
