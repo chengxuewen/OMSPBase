@@ -1,14 +1,15 @@
 # OMSPBase Status
 
-> 生成: 2026-07-19 | 决策数量: 155+ (D1-D125) | Phase: 1 | 135 tests passing | WebRTC DC E2E ~33fps | pixi 环境就绪
+> 生成: 2026-07-19 | 决策数量: 155+ (D1-D155) | Phase: 1 | 135 tests passing | WebRTC DC E2E ~33fps | pixi 环境就绪
 
 ## Phase
 
-**当前**: Phase 1。PipelineEngine 执行器完成并集成到 host/remote: 源并行、处理器链串行、Sink 扇出、热插拔 add/remove/readd。WebRTC 数据通道 (webrtc-rs 0.12) 双实现 (stub + backend)。GStreamer 采集 + Apple VT 编码器 (H.264 硬编)，E2E 帧中继 host→server→remote 已验证 (~33fps)。
-**MVP 成果**: 5 crate workspace。host(10 modules) + remote(9 modules) + server(8) + core(9) + webrtc(5)。
-**测试**: 135 workspace tests (per-crate: core 58, host 21, server 37, remote 13, webrtc 18)。PipelineEngine 11 tests (含热插拔边界)。WebRTC stub 18 tests。
-**架构文档**: 15 篇模块文档 + 7 篇 SDD。审计 54/58 项已应用。
-**骨架**: WebRTC 路径为 stub。PluginManager::create_node 返回 Phase 2 错误。
+**当前**: Phase 1 完成，Phase 2 就绪。整合 MVP 计划 (`.sisyphus/plans/consolidated-mvp/`) 已采纳: 52 任务 6 阶段 (D142)。
+**下一步**: Phase 0 Foundation — webrtc-sys Track API (D137/D139) → Phase 1 Transport RTP 迁移 → Phase 2 mediasoup SFU (D138)。
+**Phase 2 方向**: mediasoup SFU + webrtc-sys 默认后端 + Component 框架精简版 + Admin Dashboard SPA。
+**MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(5)。
+**测试**: 135 workspace tests (per-crate: core 58, remote-host 21, server 37, remote-client 13, webrtc 18)。PipelineEngine 11 tests (含热插拔边界)。WebRTC stub 18 tests。
+**架构文档**: 23 篇模块文档 + 7 篇 SDD。审计 26 项发现已应用 (doc-audit 2026-07-19)。
 
 ## 决策状态
 
@@ -18,6 +19,31 @@
 | D125 | PipelineEngine hot-plug 边界测试: 6→11 tests | ✅ | 1 |
 
 | D1 | 控制面+数据面分离 | ✅ | 0 |
+| D137 | WebRTC DC→RTP track 升级 (默认后端 webrtc-sys, D139修正) | ✅ | 1-2 |
+| D138 | mediasoup SFU 架构确认 (mediasoup-sys v0.22) | ✅ | 2 |
+| D139 | 后端命名: backend-libwebrtc → backend-webrtc-sys | ✅ | 1 |
+| D140 | Phase 0 Feature Gate: 只实现 webrtc-sys，其余 compile_error! 占位 | ✅ | 0 |
+| D141 | F6 删除: DC 媒体路径不在 omspbase-webrtc crate 层 | ✅ | 0 |
+| D142 | 整合 MVP 计划采纳: 52 任务 6 阶段 (consolidated-mvp) | ✅ | 0 |
+
+| D143 | Phase 1-2 已知风险接受: 7 项审计通过，不阻塞 Phase 0 | ✅ | 0 |
+
+| D144 | 借鉴 webrtc-kit 多后端 trait 抽象模式 (feature-gate + cfg dispatch) | ✅ | 0 |
+
+| D145 | Phase 0 PeerConnection struct 非 trait (Phase 2 多后端后提取) | ✅ | 0 |
+
+| D146 | W3C API 命名兼容 (createOffer/createAnswer/addTrack/onTrack/...) | ✅ | 0 |
+
+| D147 | AudioTrack 设计: Opus 48kHz 2ch, 多轨 per PC | ✅ | 0 |
+
+| D148 | 多轨管理: HashMap<String, TrackRef> 注册表, 上限 8 | ✅ | 0 |
+
+| D149 | DataChannel 保留策略: 控制指令专用, media 移入 RTP track | ✅ | 0 |
+
+| D150 | omspbase-core 零 WebRTC 依赖 (MediaTransport trait 定义在此) | ✅ | 0 |
+
+| D151 | RtcEngine::create_factory() cfg dispatch 入口 | ✅ | 0 |
+
 | D2 | Client + Host 双应用 | ✅ | 0 |
 | D3 | 微内核 + 插件体系 (MVP: 1 binary) | ✅ | 0 |
 | D4 | Auth 双模式 (Local/AUDEBase) | ✅ | 0 |
@@ -58,6 +84,8 @@
 | D74 | WS Phase 1 + MQTT Phase 2 | ✅ | 0 |
 | D75 | I420 标准格式 | ✅ | 0 |
 | D76 | remote vs client 分离 | ✅ | 0 |
+| D154 | crate 重命名: host→remote-host, remote→remote-client (对齐工业惯例) | ✅ | 0 |
+| D155 | Host 单体架构确认: GStreamer + webrtc-sys 同进程共存 | ✅ | 0 |
 | D77 | Host 跨平台 relay-default | ✅ | 0 |
 | D78 | P2P/relay 可强制 | ✅ | 0 |
 | D79 | C/C++/Python 三语言绑定 | ✅ | 0 |
@@ -118,10 +146,34 @@
 | Crate | 模块数 | 测试数 | 行数 | 状态 |
 |-------|:------:|:------:|------|:----:|
 | omspbase-core | 9 | 58 | ~1800 | ✅ |
-| omspbase-host | 10 | 21 | ~1550 | ✅ |
+| omspbase-remote-host | 10 | 21 | ~1550 | ✅ |
 | omspbase-server | 8 | 37 | ~1423 | ✅ |
-| omspbase-remote | 9 | 13 | ~1050 | ✅ |
+| omspbase-remote-client | 9 | 13 | ~1050 | ✅ |
 | omspbase-webrtc | 5 | 18 | ~550 | ✅ dual |
 | **workspace total** | **41** | **135**† | **~6400** | ✅ |
 
 † workspace 与 per-crate 计数差异: GStreamer-feature 测试仅在 per-crate 计入。58+21+37+13+18=147 per-crate。
+
+---
+
+## 命名变更历史
+
+| 旧名称 | 新名称 | 理由 | 决策 |
+|--------|--------|------|:----:|
+| omspbase-host | omspbase-remote-host | 对齐工业惯例 (host=被控侧推流) | D154 |
+| omspbase-remote | omspbase-remote-client | 对齐工业惯例 (client=主控侧拉流) | D154 |
+| omspbase-remote-c (Phase 2+) | omspbase-remote-client-c | 命名一致性 | D154 |
+| omspbase-remote-sdk | omspbase-remote-client-sdk | 命名一致性 | D154 |
+
+## 整合计划
+
+`.sisyphus/plans/consolidated-mvp/plan.md` — 52 任务, 6 阶段 (D142)
+
+| Phase | 名称 | 任务数 | 依赖 | 关键决策 |
+|-------|------|:-----:|------|----------|
+| 0 | Foundation — webrtc-sys Track API | 9 (1 removed) | 无 | D137, D139, D140, D144-D151 |
+| 1 | Transport — Host/Remote RTP 迁移 | 7 | Phase 0 | D137, D141 |
+| 2 | Server — mediasoup SFU | 18 | Phase 0 | D138 |
+| 3 | Components — 精简框架 | 10 | Phase 1+2 | D136 |
+| 4 | Admin — Dashboard SPA | 7 | Phase 3 | D136 |
+| 5 | Plugin + 集成测试 | 7 | 全部 | D136 |
