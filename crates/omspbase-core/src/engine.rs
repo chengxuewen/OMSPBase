@@ -448,4 +448,82 @@ mod tests {
         let (s2, _) = TestSink::new();
         assert!(engine.add_chain("dup".into(), Box::new(TestSource { counter: 0, name: "b" }), vec![], vec![Box::new(s2)]).is_err());
     }
+
+    #[tokio::test]
+    async fn engine_remove_then_readd_same_id() {
+        // Verify a chain can be removed and re-added with the same ID.
+        let rt = tokio::runtime::Handle::current();
+        let engine = PipelineEngine::new(rt);
+        let (s1, _) = TestSink::new();
+        engine.add_chain("r".into(), Box::new(TestSource { counter: 0, name: "a" }), vec![], vec![Box::new(s1)]).unwrap();
+        engine.start().unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        engine.remove_chain("r").unwrap();
+        assert_eq!(engine.chain_count(), 0);
+        let (s2, r2) = TestSink::new();
+        engine.add_chain("r".into(), Box::new(TestSource { counter: 0, name: "b" }), vec![], vec![Box::new(s2)]).unwrap();
+        assert_eq!(engine.chain_count(), 1);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        engine.stop().await.unwrap();
+        assert_eq!(r2.lock().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn engine_remove_nonexistent_errors() {
+        let rt = tokio::runtime::Handle::current();
+        let engine = PipelineEngine::new(rt);
+        assert!(engine.remove_chain("ghost").is_err());
+    }
+
+    #[tokio::test]
+    async fn engine_idempotent_start() {
+        // start() called twice should not panic or double-spawn.
+        let rt = tokio::runtime::Handle::current();
+        let engine = PipelineEngine::new(rt);
+        let (sink, received) = TestSink::new();
+        engine.add_chain("c".into(), Box::new(TestSource { counter: 0, name: "c" }), vec![], vec![Box::new(sink)]).unwrap();
+        engine.start().unwrap();
+        engine.start().unwrap(); // idempotent
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        engine.stop().await.unwrap();
+        assert_eq!(received.lock().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn engine_hot_add_with_processor() {
+        // Add a chain with a processor while the engine is already running.
+        let rt = tokio::runtime::Handle::current();
+        let engine = PipelineEngine::new(rt);
+        let (sink1, r1) = TestSink::new();
+        engine.add_chain("c1".into(), Box::new(TestSource { counter: 0, name: "c1" }), vec![], vec![Box::new(sink1)]).unwrap();
+        engine.start().unwrap();
+
+        let (sink2, r2) = TestSink::new();
+        engine.add_chain("c2".into(), Box::new(TestSource { counter: 0, name: "c2" }), vec![Box::new(TestProcessor { name: "p" })], vec![Box::new(sink2)]).unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        engine.stop().await.unwrap();
+        assert_eq!(r1.lock().unwrap().len(), 3);
+        assert_eq!(r2.lock().unwrap().len(), 3);
+        if let InternalPacket::Encoded(ref f) = r2.lock().unwrap()[0] {
+            assert_eq!(f.payload.len(), 2, "processor should double payload");
+        }
+    }
+
+    #[tokio::test]
+    async fn engine_remove_all_chains_survives() {
+        // Engine with 0 chains after removal should not panic on stop.
+        let rt = tokio::runtime::Handle::current();
+        let engine = PipelineEngine::new(rt);
+        let (s1, _) = TestSink::new();
+        let (s2, _) = TestSink::new();
+        engine.add_chain("a".into(), Box::new(TestSource { counter: 0, name: "a" }), vec![], vec![Box::new(s1)]).unwrap();
+        engine.add_chain("b".into(), Box::new(TestSource { counter: 0, name: "b" }), vec![], vec![Box::new(s2)]).unwrap();
+        engine.start().unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        engine.remove_chain("a").unwrap();
+        engine.remove_chain("b").unwrap();
+        assert_eq!(engine.chain_count(), 0);
+        engine.stop().await.unwrap(); // must not panic
+    }
 }
