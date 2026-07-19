@@ -43,3 +43,37 @@ impl SessionDescription {
         Self { sdp_type, sdp }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_each_type() {
+        assert_eq!(SdpType::Offer.to_string(), "offer");
+        assert_eq!(SdpType::PrAnswer.to_string(), "pranswer");
+        assert_eq!(SdpType::Answer.to_string(), "answer");
+        assert_eq!(SdpType::Rollback.to_string(), "rollback");
+    }
+
+    #[test]
+    fn session_description_new() {
+        let sd = SessionDescription::new(SdpType::Offer, "v=0".into());
+        assert_eq!(sd.sdp_type, SdpType::Offer);
+        assert_eq!(sd.sdp, "v=0");
+    }
+
+    #[test]
+    fn serde_camel_case_roundtrip() {
+        let sd = SessionDescription {
+            sdp_type: SdpType::Answer,
+            sdp: "v=0\r\n".into(),
+        };
+        let json = serde_json::to_string(&sd).unwrap();
+        // camelCase: {"type":"answer","sdp":"v=0\r\n"}
+        assert!(json.contains("\"type\":\"answer\""));
+        let parsed: SessionDescription = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.sdp_type, SdpType::Answer);
+        assert_eq!(parsed.sdp, "v=0\r\n");
+    }
+}

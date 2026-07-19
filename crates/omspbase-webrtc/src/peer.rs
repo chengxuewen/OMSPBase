@@ -3,6 +3,7 @@
 //! With `webrtc-backend` feature: wraps webrtc-rs RTCPeerConnection.
 //! Without: stub (returns success, no actual networking).
 
+#[cfg(feature = "webrtc-backend")]
 use std::sync::Arc;
 
 use crate::channel::{DataChannel, DataChannelInit};
@@ -261,12 +262,90 @@ impl PeerConnection {
     }
 }
 
-
 impl Clone for PeerConnection {
     fn clone(&self) -> Self {
         #[cfg(feature = "webrtc-backend")]
         { Self { inner: self.inner.clone() } }
         #[cfg(not(feature = "webrtc-backend"))]
         { Self {} }
+    }
+}
+
+#[cfg(all(test, not(feature = "webrtc-backend")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stub_factory_default_creates() {
+        let factory = PeerConnectionFactory::default();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(factory.create_peer_connection(PcConfig::default()));
+        assert!(pc.is_ok());
+    }
+
+    #[test]
+    fn stub_create_offer_returns_sdp_type_offer() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let offer = rt.block_on(pc.create_offer(&OfferOptions::default())).unwrap();
+        assert_eq!(offer.sdp_type, SdpType::Offer);
+    }
+
+    #[test]
+    fn stub_create_answer_returns_sdp_type_answer() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let answer = rt.block_on(pc.create_answer(&AnswerOptions::default())).unwrap();
+        assert_eq!(answer.sdp_type, SdpType::Answer);
+    }
+
+    #[test]
+    fn stub_sdp_operations_are_noop() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let sd = SessionDescription::new(SdpType::Offer, String::new());
+        assert!(rt.block_on(pc.set_local_description(&sd)).is_ok());
+        assert!(rt.block_on(pc.set_remote_description(&sd)).is_ok());
+    }
+
+    #[test]
+    fn stub_add_ice_candidate_is_noop() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let ic = IceCandidate { candidate: "candidate:1".into(), sdp_mid: Some("0".into()), sdp_mline_index: Some(0) };
+        assert!(rt.block_on(pc.add_ice_candidate(&ic)).is_ok());
+    }
+
+    #[test]
+    fn stub_create_data_channel_preserves_label() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let dc = rt.block_on(pc.create_data_channel("mychan", DataChannelInit::default())).unwrap();
+        assert_eq!(dc.label(), "mychan");
+        assert_eq!(dc.id(), 0);
+    }
+
+    #[test]
+    fn stub_connection_states_are_default() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        assert!(matches!(pc.connection_state(), PeerConnectionState::New));
+        assert!(matches!(pc.ice_connection_state(), IceConnectionState::New));
+        assert!(matches!(pc.ice_gathering_state(), IceGatheringState::New));
+        assert!(matches!(pc.signaling_state(), SignalingState::Stable));
+    }
+
+    #[test]
+    fn stub_close_is_noop() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        rt.block_on(pc.close());
+    }
+
+    #[test]
+    fn pc_config_default_is_all_transport() {
+        let cfg = PcConfig::default();
+        assert!(cfg.ice_servers.is_empty());
+        assert_eq!(cfg.ice_transport_type, IceTransportsType::All);
     }
 }

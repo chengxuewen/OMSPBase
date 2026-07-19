@@ -155,3 +155,43 @@ impl DataChannelRx {
         { std::future::pending().await }
     }
 }
+
+#[cfg(all(test, not(feature = "webrtc-backend")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stub_data_channel_state_is_closed() {
+        let dc = DataChannel { label: "test".into(), id: 0 };
+        assert_eq!(dc.state(), DataChannelState::Closed);
+    }
+
+    #[test]
+    fn stub_label_and_id() {
+        let dc = DataChannel { label: "mylabel".into(), id: 42 };
+        assert_eq!(dc.label(), "mylabel");
+        assert_eq!(dc.id(), 42);
+    }
+
+    #[test]
+    fn stub_send_is_noop() {
+        let dc = DataChannel { label: "x".into(), id: 0 };
+        // ponytail: block_on for unit test simplicity; always Ok
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            assert!(dc.send(b"hello").await.is_ok());
+            assert!(dc.send_text("world").await.is_ok());
+        });
+    }
+
+    #[test]
+    fn stub_data_channel_init_defaults() {
+        let init = DataChannelInit::default();
+        assert!(init.ordered);
+        assert_eq!(init.max_retransmit_time, None);
+        assert_eq!(init.max_retransmits, None);
+        assert_eq!(init.protocol, "");
+        assert!(!init.negotiated);
+        assert_eq!(init.id, -1);
+    }
+}
