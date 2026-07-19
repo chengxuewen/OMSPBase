@@ -1,6 +1,6 @@
 # 传输架构与 trait 设计
 
-> Phase 0 架构定义 — MediaTransport trait、三后端分发、sans-I/O 运行循环。参考 webrtc-kit 的 trait 抽象 + str0m 的 sans-I/O 设计。
+> Phase 0 架构定义 — MediaTransport trait、三后端分发、sans-I/O 运行循环。参考 webrtc-kit 的 trait 抽象 + str0m 的 sans-I/O 设计。默认后端 webrtc-sys（libwebrtc C++ FFI 包装）。
 
 ---
 
@@ -12,7 +12,8 @@
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  backend-str0m          backend-libwebrtc    backend-webrtc-rs │
-│  (默认: Embed/LAN)      (弱网/遥控)          (未来: W3C API) │
+│  backend-str0m          backend-libwebrtc    backend-webrtc-rs │
+│  (Embed/LAN)            (默认: webrtc-sys)  (未来: W3C API) │
 │                                                             │
 │  sans-I/O 原生          C++ libwebrtc FFI    tokio async     │
 │  ~30K LOC                ~1M+ LOC             ~80K LOC       │
@@ -24,8 +25,8 @@
 
 | 后端 | 编译特性 | 场景 | 运行时依赖 |
 |------|---------|------|-----------|
-| str0m | `backend-str0m` (默认) | AUDESYS Embed, 局域网 P2P | 无 (sans-I/O) |
-| libwebrtc | `backend-libwebrtc` | 公网遥控, 弱网穿透 | libwebrtc.so (cmake 构建) |
+| libwebrtc | `backend-libwebrtc` (默认) | 公网遥控, 弱网穿透 | webrtc-sys → libwebrtc.so (cmake 构建) |
+| str0m | `backend-str0m` | AUDESYS Embed, 局域网 P2P | 无 (sans-I/O) |
 | webrtc-rs | `backend-webrtc-rs` | 未来 Embed 升级 | tokio (可选) |
 
 ---
@@ -127,7 +128,7 @@ pub enum TransportEvent {
 pub trait MediaTrack: Send {
     fn id(&self) -> &str;
     fn kind(&self) -> TrackKind;
-    fn write(&mut self, frame: &[u8]) -> Result<()>;  // 写入编码帧
+    fn write(&mut self, frame: &[u8]) -> Result<()>;  // 写入编码帧 → TrackLocal::write_frame → libwebrtc RTP/SRTP 打包
     fn close(&self);
 }
 
@@ -140,6 +141,58 @@ pub trait DataChannelHandle: Send {
 
 pub enum TrackKind { Video, Audio }
 ```
+
+### 2.5 RTP 轨道管线 (webrtc-sys 后端)
+
+当使用 webrtc-sys (libwebrtc) 后端时，视频帧的推送路径：
+
+```
+编码器 (GStreamer/HW encoder)
+  │ H.264/H.265 encoded frame (Annex B / AVCC)
+  ▼
+TrackLocal (MediaTrack::write)
+  │ 将编码帧封装为 webrtc::VideoFrame
+  ▼
+libwebrtc VideoTrackSource::write_frame()
+  │ RTP 打包 (packetizer) + SRTP 加密
+  ▼
+网络 (ICE/DTLS 传输)
+```
+
+**关键边界**: GStreamer 产出的字节边界在 `TrackLocal::write()` 处被消费，此后的 RTP 封装和加密完全由 libwebrtc 内部处理。用户代码只需提供编码帧的 `&[u8]`。
+
+### 2.6 DataChannel 降级说明 (D155)
+
+在 webrtc-sys 后端中，DataChannel 降级为**仅控制信令**用途：
+- 键盘/鼠标/手柄输入事件
+- 剪贴板同步
+- 文件传输通过 HTTP multipart（非 DC）
+
+原因是 libwebrtc 的 SCTP DataChannel 在弱网下重传策略不够灵活，对大块数据传输体验不佳。Phase 1 遥控座舱中，DC 仅承载 `<1KB` 的控制命令帧。
+
+### 2.7 GStreamer→WebRTC 字节边界 (D155)
+
+```
+┌───────────────────────────────────────────────────┐
+│              GStreamer Pipeline                    │
+│  appsrc → videoscale → x264enc → appsink          │
+│                               ↓ emit-signals=true  │
+└───────────────────────────────────────────────────┘
+                                │
+                H.264 Annex B byte stream (编码帧)
+                                │
+                                ▼
+┌───────────────────────────────────────────────────┐
+│           OMSPBase Transport Layer                 │
+│  MediaTrack::write(&[u8])                         │
+│  → webrtc-sys: TrackLocal::write_frame()          │
+│  → libwebrtc: RTP packetizer + SRTP + DTLS        │
+└───────────────────────────────────────────────────┘
+```
+
+**合约**: GStreamer pipeline 产生完整的编码帧 (NAL unit 边界正确)。Transport 层不重新分片编码帧 — 编码帧的 NAL unit 边界由 GStreamer 保证，libwebrtc 的 RTP packetizer 处理 MTU 分片。
+
+---
 
 ---
 
@@ -183,14 +236,14 @@ compile_error!("Only one WebRTC backend can be enabled at a time");
 
 | 维度 | str0m | libwebrtc (via webrtc-sys) | webrtc-rs |
 |------|-------|---------------------------|-----------|
-| 设计哲学 | sans-I/O 状态机 | C++ FFI 包装 | tokio async |
+| 设计哲学 | sans-I/O 状态机 | C++ FFI 包装 (webrtc-sys crate) | tokio async |
 | W3C API 兼容 | 不兼容（故意） | 完全兼容 | 兼容 (v0.20+) |
-| 运行时需求 | 无 | libwebrtc.so (1M+ LOC) | tokio |
+| 运行时需求 | 无 | libwebrtc.so + webrtc-sys FFI | tokio |
 | 编译复杂度 | cargo build | cmake + Corrosion 交叉编译 | cargo build |
 | 二进制大小 | ~100KB | ~30MB (.so) | ~2MB |
 | GCC 拥塞控制 | ❌ 自建 | ✅ 完整的 Google GCC | ❌ 自建 |
 | FEC + NetEQ | ❌ 自建 | ✅ 完整的 | ❌ 自建 |
-| 适用场景 | LAN P2P, AUDESYS Embed | 公网, 弱网, 遥控 | 未来 AUDESYS Embed |
+| 适用场景 | LAN P2P, AUDESYS Embed | 公网, 弱网, 遥控 (默认) | 未来 AUDESYS Embed |
 
 ---
 
@@ -316,8 +369,8 @@ pub struct CodecConfig {
 |------|------|---------|------|--------|
 | AUDESYS Embed (LAN) | str0m | P2P | 无需 | 无 (sans-I/O) |
 | AUDESYS Embed (WAN) | libwebrtc (Phase 2) | P2P + relay | coturn | libwebrtc.so |
-| AUDEBase Sidecar | str0m (default) | P2P + relay | coturn | tokio |
-| Standalone 服务器 | str0m + LiveKit SFU | SFU | coturn | tokio |
+| AUDEBase Sidecar | libwebrtc (默认) | P2P + relay | coturn | libwebrtc.so + gstreamer |
+| Standalone 服务器 | libwebrtc + mediasoup SFU | SFU | coturn/srt | libwebrtc.so + tokio |
 | Web Viewer | 浏览器 RTCPeerConnection | P2P/SFU (native) | coturn | 浏览器内置 |
 
 ---

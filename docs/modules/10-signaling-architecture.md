@@ -317,6 +317,8 @@ async fn drain_outputs(
 #[derive(Debug, Clone)]
 pub enum RoomTopology {
     PeerToPeer,
+    /// mediasoup SFU relay (Phase 2) — 信令层仅管理 SDP 交换,
+    /// 媒体 plane 由 mediasoup Worker 独立处理，信令层不解析媒体内容。
     SfuRelay(SfuConfig),
     PublishSubscribe(PubSubConfig),
 }
@@ -334,12 +336,27 @@ pub trait RoomRouter: Send {
 | Topology | 路由策略 |
 |----------|---------|
 | PeerToPeer | 单播给房间内另一个参与者 |
-| SfuRelay | 广播给所有参与者（不含发送者） |
+| SfuRelay | 广播给所有参与者（不含发送者）。信令层仅转发 SDP/ICE，媒体 plane 由外部 SFU (mediasoup) 处理 |
 | PublishSubscribe | 按 TrackSubscription 过滤 |
+
+### 10.7.1 mediasoup SFU 信令桥接 (Phase 2)
+
+当 topology = `SfuRelay` 时，信令层引入 SDP 适配桥接：
+
+```
+Host ──WS──→ SignalHandler ──SDP adapter──→ mediasoup Router
+  │  SDP offer        │  PlainTransport.createProducer        │
+  │                   │  WebRtcTransport.createConsumer      │
+Remote ←──WS── SignalHandler ←──SDP adapter── mediasoup Router
+```
+
+**SDP adapter** 将 WebRTC SDP 转换为 mediasoup 的 PlainTransport / WebRtcTransport 参数。信令层不创建 mediasoup Transport — 仅传递 JSON 参数给 Server 端的 mediasoup 集成模块。
+
+**WebSocket relay 保留 DC 控制命令**: mediasoup 处理音视频 RTP，但 DataChannel 控制命令（键盘/鼠标/手柄）仍通过 WebSocket 信令通道透传。这避免了 SFU 侧的 SCTP 开销，且控制命令负载小 (<1KB)，WS 延迟足够。
 
 ## 10.8 浏览器客户端适配
 
-`SignalHandler` 和 `RoomRouter` 都是**连接类型无关**的 — 它们处理 `ConnId` + `SignalingMessage`，不关心消息来自原生客户端还是浏览器。
+`SignalHandler` 和 `RoomRouter` 都是**连接类型无关**的 — 它们处理 `ConnId` + `SignalingMessage`，不关心消息来自原生客户端还是浏览器。信令层不关心媒体是否由 SFU (mediasoup) 处理 — SDP 交换的语义对 SignalHandler 透明。
 
 浏览器客户端：
 - 使用 JS `WebSocket` API 连接信令服务
