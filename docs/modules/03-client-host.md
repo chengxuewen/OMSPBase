@@ -12,7 +12,7 @@
 | **GUI** | Tauri v2 | Embedded Web (localhost 配置页) |
 | **SDK** | 全量（生产 + 消费） | 仅生产（capture, encode, push） |
 | **角色** | 可控制他人，也可被控制 | 仅产出媒体流 |
-| **安装** | 桌面安装包 | 单一二进制 `omspbase-host` |
+| **安装** | 桌面安装包 | 单一二进制 `omspbase-remote-host` |
 | **体积** | 大（含 GUI 框架） | 小（无 GUI 依赖） |
 
 **双应用决策原因**：Host 需要运行在没有桌面环境的平台上（无 GUI 的 Linux 服务器、车端嵌入式设备）。
@@ -70,23 +70,41 @@ if (permissions.surveillance) modules.push(SurveillanceModule);
 车端、机房、边缘设备、摄像头——仅产出媒体流，无需 GUI。
 
 ### 架构
+
+Host 单体架构 — GStreamer pipeline + WebRTC transport 同进程运行 (D155):
+
 ```
-┌─────────────────────────┐
-│  omspbase-host         │
-│  ┌───────────────────┐  │
-│  │ 采集 (capture)     │  │
-│  │ 编码 (encode)      │  │
-│  │ 推流 (push)        │  │
-│  └───────────────────┘  │
-│  ┌───────────────────┐  │
-│  │ Embedded Web      │  │
-│  │ localhost 配置页   │  │
-│  └───────────────────┘  │
-└─────────────────────────┘
+┌──────────────────────────────────────────┐
+│  omspbase-remote-host  (single binary)   │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │  GStreamer (C, glib dynamic .so)  │  │
+│  │  capture → encode → appsink       │  │
+│  │             │                      │  │
+│  │    H.264 byte buffer (&[u8])      │  │
+│  │             ↓                      │  │
+│  ├────────────────────────────────────┤  │
+│  │  omspbase-webrtc (Rust wrapper)   │  │
+│  │  TrackLocal::write_frame(&[u8])   │  │
+│  │             ↓                      │  │
+│  ├────────────────────────────────────┤  │
+│  │  webrtc-sys (C++, libwebrtc .a)   │  │
+│  │  RTP packetizer → ICE → network   │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │  axum HTTP/WS (信令 + 指标 + 配置) │  │
+│  │  Signaling + Metrics + Session     │  │
+│  └────────────────────────────────────┘  │
+└──────────────────────────────────────────┘
 ```
 
+关键设计: GStreamer 和 libwebrtc 通过 `&[u8]` 纯字节接口耦合，各自使用独立内存分配器 (glib malloc vs C++ new)，无内存共享、无符号冲突。GStreamer 为 optional feature，嵌入式平台直接排除。
+
 ### 特点
-- 单一二进制 `omspbase-host` (~25 MB)。Phase 1 capture → encode → push 同进程 (D102 修正: 3 进程→单进程)
+- 单一二进制 `omspbase-remote-host` (~25 MB, GStreamer + libwebrtc 静态链接)
+- GStreamer pipeline + WebRTC transport 同进程运行 (D155, 与 OBS/Sunshine 同模式)
+- 接口耦合: appsink → `&[u8]` byte buffer → TrackLocal::write_frame (内存隔离)
 - 无 GUI 依赖，适合嵌入式设备
 - Embedded Web 配置页（localhost）
 - 仅包含生产 SDK（采集、编码、推流）

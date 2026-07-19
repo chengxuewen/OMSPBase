@@ -26,8 +26,8 @@ OMSPBase/
 │   ├── skills/         # 技能（book-to-skill/doc-audit/openspec-*/test-harness）
 │   └── memorys/        # 项目记忆文件 (decisions.md, status.md)
 ├── crates/              # Rust 工作区 (3 个 member crate)
-│   ├── omspbase-host/   # Host 应用 (headless, 采集+编码+推流)
-│   ├── omspbase-remote/ # Remote 应用 (拉流+解码+控制)
+│   ├── omspbase-remote-host/   # Host 应用 (headless, 采集+编码+推流)
+│   ├── omspbase-remote-client/ # Remote 应用 (拉流+解码+控制)
 │   └── omspbase-server/ # Server 应用 (信令+relay+监控)
 ├── docs/               # 设计文档 (architecture.md + modules/ + reference/ + research/)
 ├── README.md           # 项目简介
@@ -54,7 +54,7 @@ OMSPBase/
 | 架构文档 | `docs/architecture.md` | 整体架构设计 |
 | 模块文档 | `docs/modules/` | 各领域详细设计 (13 篇) |
 | 项目记忆 | `.agents/memorys/` | 决策记录 (decisions.md)、状态跟踪 (status.md) |
-| Rust 源码 | `crates/` | 三个 crate: omspbase-host/remote/server |
+| Rust 源码 | `crates/` | 三个 crate: omspbase-remote-host/remote/server |
 
 ## CODE MAP
 
@@ -62,8 +62,8 @@ _项目已进入代码实施阶段。以下为当前状态：_
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| omspbase-host | 🟡 骨架完成 | Host 应用: 采集、编码、推流、信令、配置 |
-| omspbase-remote | 🟡 骨架完成 | Remote 应用: 拉流、解码、渲染、控制 |
+| omspbase-remote-host | 🟡 骨架完成 | Host 应用: 采集、编码、推流、信令、配置 |
+| omspbase-remote-client | 🟡 骨架完成 | Remote 应用: 拉流、解码、渲染、控制 |
 | omspbase-server | 🟡 骨架完成 | Server 应用: 信令 relay、监控、会话管理 |
 | omspbase-core | 🔲 计划中 | 微内核: PluginManager, PipelineEngine, LicenseManager |
 | napi-binding | 🔲 计划中 | Node.js 绑定: 为 AUDEBase 提供 TypeScript API |

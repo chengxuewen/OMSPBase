@@ -5,14 +5,14 @@
 
 ## 14.1 概述
 
-omspbase-remote 是座舱侧应用程序，从 Server 拉取视频流，解码渲染到屏幕，同时通过 DataChannel 发送控制指令。Remote 只拉流和控制，不推流。
+omspbase-remote-client 是座舱侧应用程序，从 Server 拉取视频流，解码渲染到屏幕，同时通过 DataChannel 发送控制指令。Remote 只拉流和控制，不推流。
 
 ```
 Server (omspbase-server)
   │ WebRTC forward (RTP/SRTP)
   │ Signaling (WS /ws, JSON SDP/ICE)
   ▼
-omspbase-remote
+omspbase-remote-client
   ┌────────────────────────────────────────────┐
   │  Signaling Client                          │
   │  axum WS, join room, SDP/ICE 交换          │
@@ -87,10 +87,10 @@ Render (CPU fallback → GPU direct Phase 2)
 
 ## 14.5 Remote vs Client
 
-| 维度 | omspbase-remote | omspbase-client |
+| 维度 | omspbase-remote-client | omspbase-client |
 |------|----------------|-----------------|
 | GUI | 无 GUI (纯 SDK) / 简单渲染窗口 | Tauri v2 全功能桌面应用 |
-| SDK 形态 | omspbase-remote-c (.a + .so + .h) | 直接依赖 Rust crate |
+| SDK 形态 | omspbase-remote-client-c (.a + .so + .h) | 直接依赖 Rust crate |
 | 场景 | C/C++ 嵌入 (ROS/自驾/移动端) | 操作员桌面应用 |
 | 解码 | libwebrtc 内置 / FFmpeg | 同 remote |
 | 控制 | DataChannel 控制指令 | 全功能 GUI 操作 |

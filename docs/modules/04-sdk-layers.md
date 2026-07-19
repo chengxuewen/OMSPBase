@@ -20,7 +20,7 @@ Phase 1 MVP 核心：双 SDK facade 模型
         ┌────────────────────┼────────────────────┐
         ▼                                         ▼
 ┌───────────────────────┐            ┌───────────────────────┐
-│ omspbase-field        │            │ omspbase-remote       │
+│ omspbase-field        │            │ omspbase-remote-client       │
 │ (车端 SDK)             │◄─ WebRTC ─►│ (座舱 SDK)             │
 ├───────────────────────┤            ├───────────────────────┤
 │ CameraCapture (D64)    │            │ VideoDecode (D46)      │
@@ -101,7 +101,7 @@ facade crate，单一入口 re-export 所有车端能力 (D69)
 | **MQTT Telemetry** | 车端状态上报 (D74) |
 | **C FFI** | omspbase-field-c: .a + .so 静态+动态库 (D79, D83) |
 
-### 2.2 omspbase-remote（座舱 SDK）
+### 2.2 omspbase-remote-client（座舱 SDK）
 
 facade crate，单一入口 re-export 所有座舱能力 (D69)
 
@@ -111,7 +111,7 @@ facade crate，单一入口 re-export 所有座舱能力 (D69)
 | **FFmpeg Decode** | str0m 后端备选 (D70-D71) |
 | **DataChannel** | 控制指令发送 (D66) |
 | **VideoRender** | Phase 1 CPU buffer 渲染 (D47) |
-| **C FFI** | omspbase-remote-c: .a 静态链接 FFmpeg (D70) |
+| **C FFI** | omspbase-remote-client-c: .a 静态链接 FFmpeg (D70) |
 
 ### 2.3 omspbase-client（GUI 应用）
 
@@ -138,12 +138,12 @@ crates/
 ├── omspbase-pipeline/      管线 (D23-D27)
 ├── omspbase-field/          车端 SDK facade (D65, D67, D69)
 ├── omspbase-field-c/        车端 C 绑定 .a+.so (D64, D79, D83)
-├── omspbase-remote/         座舱 SDK facade (D66, D68-D69)
-├── omspbase-remote-c/       座舱 C 绑定 .a+FFmpeg (D70-D72, D79, D83)
+├── omspbase-remote-client/         座舱 SDK facade (D66, D68-D69)
+├── omspbase-remote-client-c/       座舱 C 绑定 .a+FFmpeg (D70-D72, D79, D83)
 └── omspbase-napi/           Node.js 绑定 (D55-D56)
 
 binaries/
-├── omspbase-host/           Host 应用 (D62-D63, D73)
+├── omspbase-remote-host/           Host 应用 (D62-D63, D73)
 ├── omspbase-client/         Client 应用 (D76)
 └── omspbase-server/         后台管理服务 (D86-D91)
 ```
