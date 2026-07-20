@@ -377,6 +377,7 @@ RTMP Source → FragmentBroadcaster ─┬──→ HlsSink (LL-HLS)
 **8. 多编码实例的 GPU 内存限制**：OBS 的 WHIP Simulcast 4 层编码消耗大量显存。OMSPBase 的 Simulcast 层数应根据 GPU 显存动态上限，默认为 3 层（1080p → 540p → 360p）。
 
 ---
+**相关决策**: D45 (采集-编码耦合), D6, D19, D-SIMULCAST
 ## 附录 A: OBS 管线模式深度分析
 
 ### A.1 Source 到 Output 四阶段管线

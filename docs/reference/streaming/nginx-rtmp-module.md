@@ -418,3 +418,4 @@ nginx-rtmp-module 的历史局限为 OMSPBase 指明了方向：
 - **从 C 到 Rust**：内存安全、并发安全在高吞吐流媒体场景中至关重要
 
 > **总结**：nginx-rtmp-module 是"如何在一个成熟基础设施上构建流媒体应用"的经典案例。OMSPBase 应取其架构精髓（模块化、事件驱动、配置分层、管线组合），用 Rust 的现代语言特性重新实现，避免其维护性陷阱。
+**相关决策**: D152 (录制hooks), D-STREAM-TOPOLOGY

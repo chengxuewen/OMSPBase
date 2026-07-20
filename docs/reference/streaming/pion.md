@@ -477,6 +477,7 @@ go build -o my-webrtc-app .
 **Pion 证明了 "语言原生 WebRTC 栈" 的可行性** — 纯 Go 实现性能可达 libwebrtc 的 15-25x (服务器场景), 且构建/部署/跨平台体验远超 C++ 方案。OMSPBase 以 Rust 构建相同愿景, Pion 的架构决策 (Interceptor 管道, SettingEngine, Router 模式) 是经过生产验证的最佳实践, 值得深度参考。
 
 ---
+**相关决策**: D144-D145 (多后端trait), D153 (RTP interceptor)
 
 ## 参考资源
 

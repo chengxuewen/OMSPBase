@@ -381,6 +381,7 @@ Fragment {
 LVQR 的 Unified Fragment Model 是 OMSPBase 管线模型的 **D5 优先参考** — 在架构设计层面具有最高优先级。尽管项目处于极早期阶段（5 stars，2026年4月创建），且 AGPL-3.0 许可与 OMSPBase 的 Apache 2.0 不兼容，但其核心设计思想 — 单一内部媒体类型（Fragment）、协议作为投影、N+M 复杂度替代 N×M — 是当前开源流媒体领域唯一真正解决了多协议互转问题的架构方案。
 
 ---
+**相关决策**: D5 (Unified Fragment Model), D21 (时间戳)
 
 ## 附录 A: Fragment Model 深度解析
 

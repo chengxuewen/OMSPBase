@@ -299,3 +299,4 @@ docker run -d \
 - **无官方管理 UI**：OMSPBase 作为 AUDE 生态组件，应从 Phase 1 就提供管理接口（gRPC API + Web UI），避免依赖第三方管理工具
 - **无内置转码**：OMSPBase 应评估是否需要服务端转码能力。对于远程桌面场景，终端能力差异大（不同分辨率、不同解码器支持），转码可能是刚需。可考虑 GPU 硬件编码的转码路径
 - **C++ 依赖链**：ZLMediaKit 深度依赖 C++ 工具链（CMake、GCC/Clang），交叉编译到 ARM/MIPS 需要完整工具链。OMSPBase 的 Rust + cargo 工具链在交叉编译和依赖管理上更加现代化
+**相关决策**: D-STREAM-TOPOLOGY, D-GOP-CACHE

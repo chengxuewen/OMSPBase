@@ -392,6 +392,7 @@ Xiu 是目前 Rust 流媒体生态中**最简洁、最易读的参考实现**，
 > **核心建议**: OMSPBase 不需要直接 fork 或依赖 Xiu 的 crate，但应认真学习其架构思想，尤其是 StreamHub 的解耦模式和 workspace 分层组织方式。
 
 ---
+**相关决策**: D5 (Fragment Model), D6, D19
 
 ## 参考来源
 

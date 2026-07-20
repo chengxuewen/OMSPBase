@@ -316,6 +316,7 @@ SRS 没有官方插件系统。扩展方式：
 SRS 是 RTMP 时代的标杆 — 协议兼容性、生产稳定性、传输性能、中文社区支持均无可匹敌。但以 RTMP 为中心的归一化模型是它的根本性架构缺陷，限制了向 MoQ/QUIC 等现代协议的演进。OMSPBase 应从 SRS 学习 transmux 哲学、HTTP Callback 事件系统、Origin-Edge 集群拓扑和可观测性设计，但必须用 Fragment Model 替代 RTMP 归一化，从根本上解决 13 年前的架构遗留问题。
 
 ---
+**相关决策**: D5 (Unified Fragment), D6, D19, D-STREAM-TOPOLOGY, D-GOP-CACHE
 
 ## 附录 A: ST 协程架构详解
 

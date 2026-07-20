@@ -311,6 +311,7 @@ MediaMTX 没有传统插件系统。扩展方式：
 MediaMTX 是协议路由 reference — 在零配置协议转换、IoT/监控边缘场景、QUIC 传输方面表现卓越。Path 抽象和 sourceOnDemand 模式对 OMSPBase 有直接参考价值。但 Go GC 限制、无转码能力、无 GPU 编码能力使其实现方式不适合 OMSPBase 的直接需求。取其设计思想（Path 管理 + 自动转换 + on-demand 拉流），用 Rust + Fragment Model 重新实现。
 
 ---
+**相关决策**: D5 (Unified Fragment), D21 (时间戳), D-STREAM-TOPOLOGY, D152 (nginx hooks)
 
 ## 附录 A: sourceOnDemand 模式详解
 

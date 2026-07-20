@@ -183,3 +183,4 @@ struct janus_callbacks {
 - **无内置集群** → 从 Phase 2 开始设计集群意识
 - **仅内存会话** → 可选持久化层（Redis/SQLite）
 - **janus.js 是演示库** → 提供一等 client SDK
+**相关决策**: D97 (插件架构), D144-D145 (多后端trait)
