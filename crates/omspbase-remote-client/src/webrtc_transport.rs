@@ -7,7 +7,7 @@ use omspbase_webrtc::{
     AnswerOptions, DataChannelEvent, DataMessage, IceCandidate as RtcIceCandidate,
     PcConfig, PeerConnection, PeerConnectionFactory, RtcError, SessionDescription,
 };
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 /// Manages a WebRTC PeerConnection for receiving frames via data channel.
@@ -18,6 +18,7 @@ pub struct WebrtcTransport {
     pc: Mutex<Option<PeerConnection>>,
     frame_tx: mpsc::UnboundedSender<Vec<u8>>,
     ice_tx: mpsc::UnboundedSender<String>,
+    dc_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 /// Convenience: create ICE channel pair.
@@ -39,6 +40,7 @@ impl WebrtcTransport {
             pc: Mutex::new(None),
             frame_tx,
             ice_tx,
+            dc_task: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -62,28 +64,38 @@ impl WebrtcTransport {
 
         // d. Register on_data_channel: spool → spawn task → forward frames
         let frame_tx = self.frame_tx.clone();
+        let dc_task = self.dc_task.clone();
         pc.on_data_channel(Box::new(move |d| {
             let frame_tx = frame_tx.clone();
+            let dc_task = dc_task.clone();
             Box::pin(async move {
+                // ponytail: abort previous DC reader before spawning new one
+                {
+                    let mut guard = dc_task.lock().unwrap();
+                    if let Some(prev) = guard.take() {
+                        prev.abort();
+                    }
+                }
                 let dc = omspbase_webrtc::DataChannel::from_webrtc(d).await;
                 let mut rx = dc.spool().await;
-                tokio::spawn(async move {
+                let handle = tokio::spawn(async move {
                     loop {
                         match rx.recv().await {
-                        Some(DataChannelEvent::Open) => {
-                            tracing::info!("Signaling: DataChannel opened (remote)");
-                        }
-Some(DataChannelEvent::Message(DataMessage { data })) => {
-let size = data.len();
-                            tracing::debug!("Signaling: frame received via DataChannel ({} bytes)", size);
-                            tracing::info!("Signaling: frame received via DataChannel ({} bytes)", size);
-                            let _ = frame_tx.send(data);
+                            Some(DataChannelEvent::Open) => {
+                                tracing::info!("Signaling: DataChannel opened (remote)");
+                            }
+                            Some(DataChannelEvent::Message(DataMessage { data })) => {
+                                let size = data.len();
+                                tracing::debug!("Signaling: frame received via DataChannel ({} bytes)", size);
+                                tracing::info!("Signaling: frame received via DataChannel ({} bytes)", size);
+                                let _ = frame_tx.send(data);
                             }
                             Some(DataChannelEvent::Closed) | None => break,
                             _ => {} // Open, Error — ignore
                         }
                     }
                 });
+                *dc_task.lock().unwrap() = Some(handle);
             })
         }));
 
@@ -111,7 +123,15 @@ let size = data.len();
         let answer_json = serde_json::to_string(&answer)
             .map_err(|e| RtcError::Sdp(format!("serialize answer: {e}")))?;
 
-        // h. Store the PC for subsequent ICE handling
+        // h. Close old PC before storing new one (avoid resource leak)
+        // ponytail: MutexGuard is !Send → scope before .await to avoid Send bound violation
+        let old_pc = {
+            let mut guard = self.pc.lock().map_err(|e| RtcError::Internal(e.to_string()))?;
+            guard.take()
+        };
+        if let Some(old_pc) = old_pc {
+            old_pc.close().await;
+        }
         {
             let mut guard = self.pc.lock().map_err(|e| RtcError::Internal(e.to_string()))?;
             *guard = Some(pc);
@@ -144,5 +164,27 @@ let size = data.len();
             pc.add_ice_candidate(&candidate).await?;
         }
         Ok(())
+    }
+}
+
+impl Drop for WebrtcTransport {
+    fn drop(&mut self) {
+        // ponytail: best-effort close PC and abort DC reader on drop
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // Close PeerConnection
+            if let Ok(mut guard) = self.pc.lock() {
+                if let Some(pc) = guard.take() {
+                    handle.spawn(async move {
+                        pc.close().await;
+                    });
+                }
+            }
+            // Abort DC reader task
+            if let Ok(mut guard) = self.dc_task.lock() {
+                if let Some(t) = guard.take() {
+                    t.abort();
+                }
+            }
+        }
     }
 }
