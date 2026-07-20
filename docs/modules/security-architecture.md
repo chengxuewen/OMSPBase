@@ -37,6 +37,22 @@ Client → JWT (来自 AuthProvider login) → WebSocket upgrade
 - Phase 2: 双向 mTLS，对等点通信加密
 - 证书: X.509，ECDSA P-256，90 天有效期
 
+## 证书生命周期管理
+
+Phase 1: 自签 CA + 手动轮换。TLS 证书 90 天有效期。私钥文件权限 0600。
+Phase 2: Let's Encrypt (ACME) 自动续期，CRL 吊销列表。
+信任链: Root CA → Intermediate CA (可选 Phase 2) → Leaf certificate。
+
+## 密钥管理
+
+密钥轮转策略：
+
+| 密钥类型 | 轮转周期 | 共存窗口 | 触发方式 |
+|---------|---------|---------|---------|
+| WS PSK | 30 天 | 24h | 手动/配置重载 |
+| JWT 签名密钥 | 90 天 | 24h (kid header) | 手动 |
+| TLS 私钥 | 90 天 | 0 (即时切换) | 手动/ACME |
+| HMAC 控制命令密钥 | 30 天 | 1h (旧帧重放窗口) | 手动 |
 ## 审计事件 Schema
 
 ```json
