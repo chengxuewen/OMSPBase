@@ -11,6 +11,8 @@ Layer 3: Integration  → 多 crate 组合，真实 transport
 Layer 4: E2E          → Host→Server→Remote 全链路
 ```
 
+当前测试分布 (2026-07-20): 147 workspace tests。Unit: core 58, webrtc 21 (w3c-api)。Integration: webrtc-sys loopback 13, host E2E 21, server 37, remote 13, PipelineEngine 11。
+
 ### Layer 1: Unit
 
 - 位置：`crates/*/src/**/*.rs` 内 `#[cfg(test)] mod tests`
