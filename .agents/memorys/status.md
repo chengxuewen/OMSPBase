@@ -1,21 +1,29 @@
 # OMSPBase Status
 
-> 生成: 2026-07-19 | 决策数量: 155+ (D1-D155) | Phase: 1 | 135 tests passing | WebRTC DC E2E ~33fps | pixi 环境就绪
+> 生成: 2026-07-20 | 决策数量: 161+ (D1-D161) | Phase: 0-1 | 147 tests passing | WebRTC triple-backend (stub/webrtc-rs/webrtc-sys) | loopback 测试完整 | macOS -ObjC linker 修复
 
 ## Phase
 
-**当前**: Phase 1 完成，Phase 2 就绪。整合 MVP 计划 (`.sisyphus/plans/consolidated-mvp/`) 已采纳: 52 任务 6 阶段 (D142)。
-**下一步**: Phase 0 Foundation — webrtc-sys Track API (D137/D139) → Phase 1 Transport RTP 迁移 → Phase 2 mediasoup SFU (D138)。
+**当前**: Phase 0-1 交错。P0 (PcBackend default methods) + P1 (RTCStats/RtpParameters) 移植完成。webrtc-sys backend 创建完成。loopback 集成测试 13 tests。egui 示例可运行。
+**下一步**: Phase 0 剩余: P2 VideoTrackSource + P3 AudioTrackSource (从 webrtc-kit 移植)。Phase 1 Transport RTP 迁移 → Phase 2 mediasoup SFU。
 **Phase 2 方向**: mediasoup SFU + webrtc-sys 默认后端 + Component 框架精简版 + Admin Dashboard SPA。
-**MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(5)。
-**测试**: 135 workspace tests (per-crate: core 58, remote-host 21, server 37, remote-client 13, webrtc 18)。PipelineEngine 11 tests (含热插拔边界)。WebRTC stub 18 tests。
+**MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(8+ modules, triple-backend)。
+**测试**: 147 workspace tests。WebRTC crate 34 tests (w3c-api 21 + loopback 13)。全部 3 后端编译通过。stub 34 pass, webrtc-rs 34 pass, webrtc-sys compiles clean。
 **架构文档**: 23 篇模块文档 + 7 篇 SDD。审计 26 项发现已应用 (doc-audit 2026-07-19)。
 
 ## 决策状态
 
 | 决策 | 内容 | 状态 | Phase |
 |------|------|:----:|:-----:|
-| D124 | webrtc test补齐: 18 tests (sdp serde, stub channel/peer, track) | ✅ | 1 |
+| D124 | webrtc test补齐: 18 tests → 34 tests (sdp serde, stub, w3c-api, loopback) | ✅ | 1 |
+| D156 | P0: PcBackend default method 模式 (from webrtc-kit, 5 methods) | ✅ | 0 |
+| D157 | P1: RTCStats + RtpParameters 类型定义 (from webrtc-kit) | ✅ | 0 |
+| D158 | webrtc-sys backend: backend/webrtc_sys.rs + feature + compile_error! guard | ✅ | 0 |
+| D159 | macOS linker: .cargo/config.toml -ObjC flag (libwebrtc ObjC categories) | ✅ | 0 |
+| D160 | loopback 测试: tests/common/loopback.rs + tests/webrtc_loopback.rs (13 tests) | ✅ | 0 |
+| D161 | egui 示例: examples/webrtc_loopback_egui.rs (eframe GUI 视频预览) | ✅ | 0 |
+
+|
 | D125 | PipelineEngine hot-plug 边界测试: 6→11 tests | ✅ | 1 |
 
 | D1 | 控制面+数据面分离 | ✅ | 0 |
@@ -149,7 +157,8 @@
 | omspbase-remote-host | 10 | 21 | ~1550 | ✅ |
 | omspbase-server | 8 | 37 | ~1423 | ✅ |
 | omspbase-remote-client | 9 | 13 | ~1050 | ✅ |
-| omspbase-webrtc | 5 | 18 | ~550 | ✅ dual |
+| omspbase-webrtc | 8+ | 34 | ~2000+ | ✅ triple |
+| **workspace total** | **44+** | **147** | **~7900** | ✅ |
 | **workspace total** | **41** | **135**† | **~6400** | ✅ |
 
 † workspace 与 per-crate 计数差异: GStreamer-feature 测试仅在 per-crate 计入。58+21+37+13+18=147 per-crate。
