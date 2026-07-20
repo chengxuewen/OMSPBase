@@ -386,6 +386,7 @@ WebRTC的优势：
 - SDP协商复杂度：比RTSP固定消息格式更复杂，需要完整SDP解析/生成
 - 带宽估计不确定性：WebRTC GCC为视频会议设计，在远程桌面高带宽低延迟场景可能非最优
 - 依赖树：libwebrtc依赖树>200+（Parsec/AnyDesk明确拒绝的原因），但webrtc-rs更轻量（~30依赖）
+**相关决策**: D47 (渲染), D-SIMULCAST, C5 (&[u8] boundary)
 
 ## 附录：Sunshine编码器工厂模式分析
 Sunshine的FFmpeg类编码器工厂是OMSPBase HardwareEncoder插件设计的直接参考：
