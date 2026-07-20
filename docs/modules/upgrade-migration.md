@@ -67,4 +67,15 @@ srttransport = []# Phase 3
 
 Phase 切换策略：flag 默认关闭 2 个 release → beta 默认开启 → stable 默认开启并移除 flag。
 
+## 运行时状态迁移
+
+### Graceful Drain
+- SIGTERM → 停止接受新连接 → 等待现有连接自然结束 (max 30s) → 超时后强制关闭。
+
+### WebRTC 连接
+- Drain 期间保持活跃，通过 ICE consent freshness 检测对端存活。
+
+### 自动回滚 (Phase 2)
+- 新二进制启动后 60s 内健康检查失败 → systemd 回滚到旧版本。
+
 > 详见 `.sisyphus/plans/consolidated-mvp/plan.md` Phase 3

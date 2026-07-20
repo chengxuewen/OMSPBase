@@ -67,4 +67,40 @@ ConfigInvalid(_) → 400
 - **INFO**: Shutdown, NotFound — 正常操作流程
 - **必须包含**: `component_id`, `request_id`, 上下文
 
+## 运行时错误场景
+
+### Signal 断连
+- WebSocket 断开后保持现有 WebRTC 连接，ICE restart 尝试恢复信令。
+- 超时 30s → 关闭连接。
+- 错误码: 2004 SignalingDisconnected
+
+### Transport 断开 (ICE)
+- 优雅关闭 (正常挂断): 错误码 2005 ConnectionClosed。
+- 异常断开 (网络中断): 错误码 2006 ConnectionLost。
+- ICE restart 自动尝试恢复。
+
+### Discovery 超时
+- ONVIF/RTSP 设备发现超时 10s。
+- 错误码: 4003 DiscoveryTimeout
+
+### Codec 不匹配
+- SDP 协商无共同 codec → 错误码 3005 CodecNegotiationFailed。
+
+### Config 回滚屏障
+- 新配置导致组件崩溃 → 回滚到旧配置。
+- 二次失败 → 进入安全模式（最小化功能集）。
+- 错误码: 9004 ConfigRollbackFailed
+
+## 背压与溢出策略
+
+### 编码队列满 (D-ERR-03)
+- Ring buffer，drop oldest frame，保留关键帧。
+- EncoderInputDropped 计数器。
+
+### 推流发送缓冲满 (D-ERR-04)
+- bounded mpsc channel (cap 32)，超出→ drop oldest P frame。
+- signal lag 计数器。
+
+### 背压传播
+- Sink → Processor → Source，通过 bounded channel capacity 实现。
 > 详见 `.sisyphus/plans/component-framework-phase1/design.md`
