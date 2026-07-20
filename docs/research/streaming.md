@@ -765,3 +765,14 @@ GStreamer 的 pipeline 模型与 LVQR 的 Unified Fragment Model 有本质区别
 5. **TURN 是独立的运维负担** — SRS/MediaMTX 都验证：WebRTC 的生产部署绕不开 TURN
 6. **MoQ wire 不做私有的 per-frame header** — LVQR 教训：保持 wire 格式的互操作性，用 sidecar track 传递额外数据
 7. **HLS URL 路径解析必须防御式** — Xiu panic 教训：`index out of bounds` 在生产中不可接受
+
+## 对应的决策
+
+| 研究发现 | 对应决策 |
+|---------|---------|
+| RTMP/HLS/SRT 协议栈 (GStreamer) | D6, D19 |
+| Origin-Edge 集群拓扑 (SRS/MediaMTX/nginx-rtmp) | D-STREAM-TOPOLOGY |
+| sourceOnDemand 按需拉流 (MediaMTX) | MediaSource trait 预留 |
+| GOP Cache 即时加入 (SRS/MediaMTX) | D-GOP-CACHE |
+| RTMP 录制 hooks (nginx-rtmp on_publish/on_done) | D152 |
+| RTP interceptor 扩展点 (Pion) | D153 |

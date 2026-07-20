@@ -537,3 +537,14 @@ WebRTC DataChannel 最关键的工程问题：
 12. Frontiers in Future Transportation — 4G/5G 远程驾驶评估
 13. arXiv:2606.17654 — 5G 网络架构与遥操作规模化
 14. arXiv:2507.20438 — 商业 5G 网络遥操作可行性研究
+
+## 对应的决策
+
+| 研究发现 | 对应决策 |
+|---------|---------|
+| Host cross-platform (D77) | D73, D77 |
+| P2P fallback to relay (ICE) | D15, D96 |
+| DataChannel 控制指令 | D4, D149 |
+| 紧急停止独立通道 | D117 |
+| Multi-SIM bonding (Vay) | Phase 3 deferred |
+| 管理面/数据面分离 (comma.ai) | D62-D63 |

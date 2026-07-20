@@ -455,3 +455,16 @@
 ```
 
 > **注**：该文档为 Phase 0 架构定义阶段的调研产物。随着项目推进，部分决策可能根据实际需求和约束调整。所有产品数据截至2026年7月。
+
+## 对应的决策
+
+| 研究发现 | 对应决策 |
+|---------|---------|
+| Unified Fragment Model (LVQR) | D5 |
+| TextureHandle 所有权 (Parsec/OBS/GStreamer) | D20 |
+| 多后端 trait 抽象 (webrtc-kit) | D144-D145 |
+| 零拷贝 GPU 编码桥接 (Parsec 7ms) | D41 |
+| 采集-编码耦合多通道输出 | D45 |
+| 渲染 Moonlight YUV→RGB 着色器 | D47 |
+| GPU Direct interop (Moonlight/Sunshine) | D47 |
+| 远程桌面场景 Simulcast 2-layer | D-SIMULCAST |
