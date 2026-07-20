@@ -1,0 +1,19 @@
+[package]
+name = "omspbase-media"
+version.workspace = true
+edition.workspace = true
+description = "OMSPBase Media — video frame types, buffers, source/sink pipeline, transforms"
+license.workspace = true
+
+[dependencies]
+thiserror = "2"
+rand = "0.8"
+tracing = "0.1"
+
+[features]
+default = ["backend-libyuv-sys"]
+backend-libyuv-sys = []
+backend-native = []
+
+[package.metadata.docs.rs]
+features = ["backend-libyuv-sys"]
