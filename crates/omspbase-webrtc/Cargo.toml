@@ -17,7 +17,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [features]
-default = ["backend-webrtc-sys"]
+default = []
 # Enable real WebRTC via webrtc-rs crate (requires tokio runtime)
 backend-webrtc-rs = ["dep:webrtc"]
 backend-webrtc-sys = ["dep:webrtc-sys", "dep:cxx"]
