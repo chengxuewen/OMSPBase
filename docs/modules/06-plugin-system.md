@@ -42,14 +42,6 @@ pub trait Plugin: Send + Sync {
     /// 关闭/清理
     fn shutdown(&self) -> Result<()>;
 }
-    fn name(&self) -> &str;
-    fn version(&self) -> (u16, u16, u16);
-    fn kind(&self) -> PluginKind;
-    fn capabilities(&self) -> Vec<PluginCapability>;
-
-    fn on_load(&self) -> Result<()>;
-    fn on_unload(&self) -> Result<()>;
-}
 ```
 
 ### 2.2 能力声明（D30）
