@@ -11,8 +11,8 @@
 │                  MediaTransport trait (sans-I/O)             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  backend-str0m          backend-libwebrtc    backend-webrtc-rs │
-│  backend-str0m          backend-libwebrtc    backend-webrtc-rs │
+│  backend-str0m          backend-webrtc-sys   backend-webrtc-rs │
+│  backend-str0m          backend-webrtc-sys   backend-webrtc-rs │
 │  (Embed/LAN)            (默认: webrtc-sys)  (未来: W3C API) │
 │                                                             │
 │  sans-I/O 原生          C++ libwebrtc FFI    tokio async     │
@@ -25,7 +25,7 @@
 
 | 后端 | 编译特性 | 场景 | 运行时依赖 |
 |------|---------|------|-----------|
-| libwebrtc | `backend-libwebrtc` (默认) | 公网遥控, 弱网穿透 | webrtc-sys → libwebrtc.so (cmake 构建) |
+| libwebrtc | `backend-webrtc-sys` (默认) | 公网遥控, 弱网穿透 | webrtc-sys → libwebrtc.so (cmake 构建) |
 | str0m | `backend-str0m` | AUDESYS Embed, 局域网 P2P | 无 (sans-I/O) |
 | webrtc-rs | `backend-webrtc-rs` | 未来 Embed 升级 | tokio (可选) |
 
@@ -209,7 +209,7 @@ pub fn create_factory(
     #[cfg(feature = "backend-str0m")]
     { return Some(Box::new(str0m_backend::Str0mFactory::new())); }
 
-    #[cfg(feature = "backend-libwebrtc")]
+    #[cfg(feature = "backend-webrtc-sys")
     { return Some(Box::new(libwebrtc_backend::LibWebRtcFactory::new(config)?)); }
 
     #[cfg(feature = "backend-webrtc-rs")]
@@ -225,10 +225,9 @@ pub fn create_factory(
 // 参考 webrtc-kit 的 compile_error! 模式
 
 #[cfg(any(
-    all(feature = "backend-str0m", feature = "backend-libwebrtc"),
+    all(feature = "backend-str0m", feature = "backend-webrtc-sys"),
     all(feature = "backend-str0m", feature = "backend-webrtc-rs"),
-    all(feature = "backend-libwebrtc", feature = "backend-webrtc-rs"),
-))]
+    all(feature = "backend-webrtc-sys", feature = "backend-webrtc-rs"),
 compile_error!("Only one WebRTC backend can be enabled at a time");
 ```
 
