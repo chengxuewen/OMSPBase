@@ -1,11 +1,11 @@
 # AGENTS.md — OMSPBase Project Knowledge Base
 
-**Generated:** 2026-07-17
+**Generated:** 2026-07-20
 **Branch:** `main`
 
 ## OVERVIEW
 
-OMSPBase — AUDE 生态多媒体系统。为 AUDESYS 和 AUDEBase 提供统一的多媒体基础设施，涵盖远程桌面、视频会议、直播推拉流、监控相机接入等能力。当前状态: Phase 0 架构定义完成，MVP 实施提案 ready，骨架代码已创建。
+OMSPBase — AUDE 生态多媒体系统。为 AUDESYS 和 AUDEBase 提供统一的多媒体基础设施，涵盖远程桌面、视频会议、直播推拉流、监控相机接入等能力。当前状态: Phase 0-1 交错，5 crate workspace，webrtc triple-backend，147 tests passing，consolidated MVP 52 任务进行中。
 
 ## STRUCTURE
 
@@ -24,10 +24,12 @@ OMSPBase/
 │   ├── rules/          # 编码规则文件（16 语言 × common + 中文副本）
 │   ├── skills/         # 技能（book-to-skill/doc-audit/openspec-*/test-harness）
 │   └── memorys/        # 项目记忆文件 (decisions.md, status.md)
-├── crates/              # Rust 工作区 (3 个 member crate)
+├── crates/              # Rust 工作区 (5 个 member crate)
 │   ├── omspbase-remote-host/   # Host 应用 (headless, 采集+编码+推流)
 │   ├── omspbase-remote-client/ # Remote 应用 (拉流+解码+控制)
-│   └── omspbase-server/ # Server 应用 (信令+relay+监控)
+│   ├── omspbase-server/ # Server 应用 (信令+relay+监控)
+│   ├── omspbase-core/   # 微内核: PluginManager, PipelineEngine, MediaTransport
+│   └── omspbase-webrtc/ # WebRTC 抽象层 (stub/webrtc-rs/webrtc-sys triple-backend)
 ├── docs/               # 设计文档 (architecture.md + modules/ + reference/ + research/)
 ├── README.md           # 项目简介
 ├── LICENSE             # Apache 2.0
@@ -51,9 +53,9 @@ OMSPBase/
 | 语言规则 | `.agents/rules/{lang}/` | 各语言专属规则 |
 | 通用规则 | `.agents/rules/common/` | 安全、编码风格、测试、Git 工作流 |
 | 架构文档 | `docs/architecture.md` | 整体架构设计 |
-| 模块文档 | `docs/modules/` | 各领域详细设计 (13 篇) |
+│ 模块文档 | `docs/modules/` | 各领域详细设计 (25 篇)
 | 项目记忆 | `.agents/memorys/` | 决策记录 (decisions.md)、状态跟踪 (status.md) |
-| Rust 源码 | `crates/` | 三个 crate: omspbase-remote-host/remote/server |
+│ Rust 源码 | `crates/` | 五个 crate: omspbase-remote-host/remote-client/server/core/webrtc
 
 ## CODE MAP
 
@@ -64,9 +66,9 @@ _项目已进入代码实施阶段。以下为当前状态：_
 | omspbase-remote-host | 🟡 骨架完成 | Host 应用: 采集、编码、推流、信令、配置 |
 | omspbase-remote-client | 🟡 骨架完成 | Remote 应用: 拉流、解码、渲染、控制 |
 | omspbase-server | 🟡 骨架完成 | Server 应用: 信令 relay、监控、会话管理 |
-| omspbase-core | 🔲 计划中 | 微内核: PluginManager, PipelineEngine, LicenseManager |
-| napi-binding | 🔲 计划中 | Node.js 绑定: 为 AUDEBase 提供 TypeScript API |
-| Phase 2+ crates | 🔲 计划中 | 详见 `.sisyphus/plans/mvp-host-remote/` 和 `docs/architecture.md` |
+│ omspbase-core | ✅ 已实现 | 微内核: PluginManager (9 modules), PipelineEngine, MediaTransport trait, 58 tests
+│ omspbase-webrtc | ✅ triple-backend | WebRTC 抽象层 (stub/webrtc-rs/webrtc-sys), 34 tests, loopback 集成测试
+│ Phase 2+ crates | 🔲 计划中 | 详见 `.sisyphus/plans/consolidated-mvp/` 和 `docs/architecture.md`
 
 ## CONVENTIONS
 
