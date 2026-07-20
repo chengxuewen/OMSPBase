@@ -108,6 +108,27 @@ impl CoreError {
                 | CoreError::ConfigParse(_)
         )
     }
+
+    /// Return the numeric error code as a stable, context-free key.
+    /// Used by future i18n layers to look up locale-specific text.
+    pub fn locale_key(&self) -> &'static str {
+        match self {
+            CoreError::WebSocketDisconnect(_) => "1001",
+            CoreError::IceTimeout => "1003",
+            CoreError::PeerConnectionFailure(_) => "1004",
+            CoreError::EncoderInit(_) => "2001",
+            CoreError::CaptureSourceNotFound(_) => "3001",
+            CoreError::CaptureDisconnected => "3002",
+            CoreError::RelayTrackBind(_) => "4001",
+            CoreError::RoomFull => "4002",
+            CoreError::PskAuthFailed => "4003",
+            CoreError::DecoderInit(_) => "5001",
+            CoreError::ControlHmacFailed => "6001",
+            CoreError::OutOfMemory => "9001",
+            CoreError::ConfigParse(_) => "9002",
+            CoreError::Unknown(_) => "9003",
+        }
+    }
 }
 
 #[cfg(test)]

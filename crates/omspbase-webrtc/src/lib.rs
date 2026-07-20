@@ -47,6 +47,20 @@ impl From<webrtc::error::Error> for RtcError {
     }
 }
 
+impl RtcError {
+    /// Return a stable, context-free identifier for this error.
+    /// Used by future i18n layers to look up locale-specific text.
+    pub fn locale_key(&self) -> &'static str {
+        match self {
+            RtcError::PeerConnection(_) => "RTCPC",
+            RtcError::DataChannel(_) => "RTCDC",
+            RtcError::Sdp(_) => "RTCSD",
+            RtcError::Track(_) => "RTCTK",
+            RtcError::Internal(_) => "RTCIN",
+        }
+    }
+}
+
 /// Re-export webrtc-rs for callback types used by consumers.
 #[cfg(feature = "backend-webrtc-rs")]
 pub use webrtc;
