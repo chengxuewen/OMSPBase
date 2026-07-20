@@ -1,6 +1,6 @@
 # OMSPBase Status
 
-> 生成: 2026-07-20 | 决策数量: 161+ (D1-D161) | Phase: 0-1 | 147 tests passing | WebRTC triple-backend (stub/webrtc-rs/webrtc-sys) | loopback 测试完整 | macOS -ObjC linker 修复
+> 生成: 2026-07-20 | 决策数量: 161+ (D1-D161 + D-SFU-WORKER/D-QOS-AUDIO/D-STREAM-TOPOLOGY/D-GOP-CACHE/D-SIMULCAST + D-AUDIT-02) | Phase: 0-1 | 147 tests | WebRTC triple-backend
 
 ## Phase
 
@@ -9,7 +9,7 @@
 **Phase 2 方向**: mediasoup SFU + webrtc-sys 默认后端 + Component 框架精简版 + Admin Dashboard SPA。
 **MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(8+ modules, triple-backend)。
 **测试**: 147 workspace tests。WebRTC crate 34 tests (w3c-api 21 + loopback 13)。全部 3 后端编译通过。stub 34 pass, webrtc-rs 34 pass, webrtc-sys compiles clean。
-**架构文档**: 23 篇模块文档 + 7 篇 SDD。审计 26 项发现已应用 (doc-audit 2026-07-19)。
+**架构文档**: 25 篇模块文档 + 7 篇 SDD。审计 26 项 (doc-audit 2026-07-19) + 33 项 (doc-audit 2026-07-20) 已应用。
 
 ## 决策状态
 
@@ -63,7 +63,7 @@
 | D12 | 独立 axum/tonic 信令服务 | ✅ | 0 |
 | D13 | Plugin 双模式加载 (MVP: 编译期) | ✅ | 0 |
 | D14 | LiveKit 纯 SFU 插件 (→ D97) | ✅ | 0 |
-| D15 | P2P 优先无 SFU (MVP 基准) | ✅ | 0 |
+│ D15 | Server relay 优先 (D118: 原 P2P 优先无 SFU) | ✅ | 0
 | D16-D19 | 参考 + Cargo workspace | ✅ | 0 |
 | D20-D27 | 管线架构 (TextureHandle, 时间戳, 广播) | ✅ | 0 |
 | D28-D30 | 插件注册 + Manager + Capability | ✅ | 0 |
@@ -88,7 +88,7 @@
 | D68 | SDK 命名去掉 -sdk 后缀 | ✅ | 0 |
 | D69 | Facade 模式 | ✅ | 0 |
 | D70-D72 | FFmpeg/codec 策略 | ✅ | 0 |
-| D73 | 最低 Ubuntu 20.04 | ✅ | 0 |
+│ D73 | 跨平台 macOS/Linux/Windows + Jetson (D118: 原 Ubuntu 20.04 only) | ✅ | 0
 | D74 | WS Phase 1 + MQTT Phase 2 | ✅ | 0 |
 | D75 | I420 标准格式 | ✅ | 0 |
 | D76 | remote vs client 分离 | ✅ | 0 |
@@ -103,7 +103,7 @@
 | D83 | .a + .so 双格式输出 | ✅ | 0 |
 | D84 | Host Web axum + SSE | ✅ | 0 |
 | D85 | Host Web HTTP Basic Auth | ✅ | 0 |
-| D86-D87 | Server 监控+JWT | ✅ | 0 |
+│ D86-D87 | Server relay+信令+监控 (D118: 原纯监控) | ✅ | 0
 | D88 | 单 admin+JWT → RBAC (D100) | ✅ | 0 |
 | D89 | Server SQLite | ✅ | 0 |
 | D90 | Server feature flags (D98) | ✅ | 0 |
@@ -111,7 +111,7 @@
 | D92 | MVP 7 项核心功能 | ✅ | 0 |
 | D93 | MVP 验收标准 (150ms/50ms) | ✅ | 0 |
 | D94 | 7 SDD + 4 层测试 | ✅ | 0 |
-| D95 | LiveKit SFU (→ D97 替代) | ✅ | 0 |
+│ D95 | ❌ OBSOLETE — superseded by D97+D118 | — | —
 | D96 | 默认 relay + P2P 可选 | ✅ | 0 |
 | D97 | mediasoup SFU (Phase 2) | ✅ | 0 |
 | D98-D101 | Server 架构四维度 | ✅ | 0 |
@@ -142,12 +142,15 @@
 | D-SEC-01 | 安全架构 mTLS+TLS+audit | ✅ | 0 |
 | D-CI-01 | GitHub Actions 3-stage | ✅ | 0 |
 | D-HW-01 | Jetson Nano 硬件基线 | ✅ | 0 |
-| D-HW-02 | 2-state IDLE↔PUSH | ✅ | 0 |
+│ D-HW-03 | 桌面硬件基线 (macOS 13+/Linux/Windows, CPU+RAM+GPU) | ✅ | 1
 | D-TEST-01 | cargo test + 手写 mock | ✅ | 0 |
 | D-SAFETY-02 | SafetyEnvelope 5-level | ✅ | 0 |
-| D-OPS-01~07 | 7 运维决策 | ✅ | 0 |
+│ D136 | MVP 三阶段调整: Phase 1-3 → Phase 0-2 + Component 框架 | ✅ | 0
+│ D152 | nginx-rtmp hooks 参考: on_publish/on_done/notify 模式 | ✅ | 2+
+│ D153 | Pion interceptor 参考: RTCP/remb/twcc 扩展点 | ✅ | 2+
 | D-OPS-09 | 8 Prometheus 告警规则 | ✅ | 0 |
-| D-OPS-10 | Host 升级策略 | ✅ | 0 |
+│ D-AUDIT-01 | 文档审计完成 (2026-07-17): 58 项发现, 54 项修复 | ✅ | 0
+│ D-MVP-EXEC | MVP 计划确认: 分阶段 P0(PcBackend)→P1(Stats)→P2+P3(TrackSource) | ✅ | 0
 
 ## 源码统计 (crates/)
 
@@ -159,9 +162,8 @@
 | omspbase-remote-client | 9 | 13 | ~1050 | ✅ |
 | omspbase-webrtc | 8+ | 34 | ~2000+ | ✅ triple |
 | **workspace total** | **44+** | **147** | **~7900** | ✅ |
-| **workspace total** | **41** | **135**† | **~6400** | ✅ |
 
-† workspace 与 per-crate 计数差异: GStreamer-feature 测试仅在 per-crate 计入。58+21+37+13+18=147 per-crate。
+† workspace 与 per-crate 计数差异: GStreamer-feature 测试仅在 per-crate 计入。58+21+37+13+34=163 per-crate (含 webrtc)。
 
 ---
 
