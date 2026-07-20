@@ -72,6 +72,9 @@ async fn main() {
     let session_state = session::Session::load(None);
     let persist_handle = session_state.start_persist();
 
+    // Collect background task handles for clean shutdown
+    let mut background_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+
     // Phase 2: Start GStreamer pipeline
     let pipeline = std::sync::Arc::new(pipeline::Pipeline::new(
         &config.capture,
@@ -152,7 +155,7 @@ async fn main() {
 
     // Spawn WS receiver loop — handles incoming SDP answers and ICE candidates
     let ws_webrtc = webrtc.clone();
-    let _ws_receiver_handle = tokio::spawn(async move {
+    let ws_receiver_handle = tokio::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(msg) => {
@@ -162,7 +165,7 @@ async fn main() {
                             serde_json::from_str::<SignalingMessage>(text)
                         {
                             match sig_msg {
-SignalingMessage::Sdp { sdp, .. } => {
+                                SignalingMessage::Sdp { sdp, .. } => {
                                     // ponytail: ignore offer echo from server relay; only process answers
                                     let sdp_type = serde_json::from_str::<serde_json::Value>(&sdp)
                                         .ok()
@@ -202,11 +205,13 @@ SignalingMessage::Sdp { sdp, .. } => {
         }
         tracing::warn!("WS receiver loop ended");
     });
+    background_tasks.push(ws_receiver_handle);
 
     // Spawn DC event loop — logs lifecycle events
-    let _dc_event_handle = tokio::spawn(async move {
+    let dc_event_handle = tokio::spawn(async move {
         webrtc_transport::run_dc_event_loop(dc_events).await;
     });
+    background_tasks.push(dc_event_handle);
 
     // Phase 7: Emergency UDP listener (background)
     let emergency_handle = tokio::spawn(async move {
@@ -221,6 +226,7 @@ SignalingMessage::Sdp { sdp, .. } => {
             tracing::error!("Emergency listener error: {e}");
         }
     });
+    background_tasks.push(emergency_handle);
 
     // PipelineEngine: orchestrate capture → encode → WebRTC push
     let push_pipeline = pipeline.clone();
@@ -241,17 +247,16 @@ SignalingMessage::Sdp { sdp, .. } => {
     engine.start().expect("Failed to start engine");
 
     // Start metrics updater: sync dropped frames counter
-    let metrics_updater = {
-        let dropped = frames_dropped;
-        tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(std::time::Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-                let _ = dropped.load(std::sync::atomic::Ordering::Relaxed);
-            }
-        })
-    };
+    let dropped = frames_dropped;
+    let metrics_updater = tokio::spawn(async move {
+        let mut interval =
+            tokio::time::interval(std::time::Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            let _ = dropped.load(std::sync::atomic::Ordering::Relaxed);
+        }
+    });
+    background_tasks.push(metrics_updater);
 
     // Run server (blocks until shutdown signal)
     let server = axum::serve(listener, app).with_graceful_shutdown(async {
@@ -272,7 +277,15 @@ SignalingMessage::Sdp { sdp, .. } => {
     // Clean up background tasks
     // Stop engine before aborting tasks
     let _ = engine.stop().await;
-    metrics_updater.abort();
+
+    for handle in background_tasks {
+        handle.abort();
+    }
+    // ponytail: brief wait for graceful abort before runtime drops
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // persist_handle runs for session lifetime, abort last
+    persist_handle.abort();
 
 }
 

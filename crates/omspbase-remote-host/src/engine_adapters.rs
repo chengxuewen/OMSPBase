@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use tokio::sync::mpsc;
+
 use omspbase_core::error::CoreError;
 use omspbase_core::pipeline::{
     FormatSpec, InternalPacket, MediaSink, MediaSource, MediaType, NodeCapability,
@@ -155,14 +157,27 @@ impl MediaSource for GstCaptureSource {
 // Always available — WebrtcTransport is not feature-gated.
 
 pub struct WebrtcOutputSink {
-    transport: Arc<crate::webrtc_transport::WebrtcTransport>,
+    _drain_handle: tokio::task::JoinHandle<()>,
+    frame_tx: mpsc::Sender<Vec<u8>>,
 }
 
 impl WebrtcOutputSink {
     pub fn new(
         transport: Arc<crate::webrtc_transport::WebrtcTransport>,
     ) -> Self {
-        Self { transport }
+        // ponytail: bounded channel (capacity 4) replaces fire-and-forget spawn.
+        // Full channel → drop oldest frame. Single consumer drains sequentially,
+        // avoiding unbounded task accumulation on DC backpressure.
+        let (frame_tx, mut frame_rx) = mpsc::channel::<Vec<u8>>(4);
+        let drain_handle = tokio::spawn(async move {
+            while let Some(data) = frame_rx.recv().await {
+                let _ = transport.send_frame(&data).await;
+            }
+        });
+        Self {
+            _drain_handle: drain_handle,
+            frame_tx,
+        }
     }
 }
 
@@ -205,11 +220,8 @@ impl MediaSink for WebrtcOutputSink {
             InternalPacket::Encoded(f) => f.payload,
             _ => return Ok(()),
         };
-        let transport = self.transport.clone();
-        // ponytail: tokio::spawn avoids block_on panic (we're already inside a runtime)
-        tokio::spawn(async move {
-            let _ = transport.send_frame(&payload).await;
-        });
+        // ponytail: try_send → drop oldest if channel full, no task accumulation
+        let _ = self.frame_tx.try_send(payload);
         Ok(())
     }
 }

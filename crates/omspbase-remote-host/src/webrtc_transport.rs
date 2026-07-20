@@ -256,6 +256,23 @@ impl WebrtcTransport {
     }
 }
 
+impl Drop for WebrtcTransport {
+    fn drop(&mut self) {
+        // ponytail: best-effort close PeerConnection and DataChannel on drop.
+        // webrtc-rs RTCPeerConnection does NOT auto-close — ICE sockets and
+        // UDP ports persist without explicit close().
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let pc = self.pc.clone();
+            let dc = self.dc.clone();
+            handle.spawn(async move {
+                dc.close().await;
+                pc.close().await;
+                tracing::debug!("WebrtcTransport: PC and DC closed");
+            });
+        }
+    }
+}
+
 /// Run the DataChannel event loop — logs lifecycle events.
 ///
 /// Call this in a spawned task with the receiver from `WebrtcTransport::new()`.
