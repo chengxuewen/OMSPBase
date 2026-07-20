@@ -431,6 +431,7 @@ rlog 录制格式 (Cap'n Proto):
 
 **总体评分**：★★★★☆ (4/5)
 — openpilot 是 WebRTC 遥操作在生产环境中最大规模的开源实践，其 athenad/webrtcd 分离架构、硬件编码器直通 WebRTC 模式和 Cereal 消息总线设计具有极高的参考价值。核心教训（JSON 低效、GOP 优化、单编码器局限、云强依赖、无安全模块）为 OMSPBase 提供了明确的反面参考。对于 OMSPBase teleop SDK，openpilot 的架构模式可作为设计蓝图，但控制协议和数据安全需从 tether-rally 和 Vay 补充。
+**相关决策**: D62-D63, D4, D149
 
 
 ## 附录
