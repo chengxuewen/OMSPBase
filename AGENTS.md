@@ -16,7 +16,6 @@ OMSPBase/
 │   ├── agent-guide.md  # AI 代理使用指南（5 层模型体系、OMO 编排）
 │   ├── agent-model-tiers.md  # 模型分层体系
 │   ├── oh-my-openagent.jsonc  # OMO Agent 配置
-│   ├── acp.jsonc       # ACP 配置
 │   ├── init-lsp-wrap.mjs      # LSP 包装器初始化
 │   ├── init-mcp-*.mjs         # MCP 初始化脚本（codegraph/playwright/postgres/openspace）
 │   ├── package.json    # OpenCode 插件依赖

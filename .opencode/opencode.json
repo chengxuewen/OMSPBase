@@ -6,7 +6,6 @@
   "plugin": [
     "superpowers@git+https://github.com/obra/superpowers.git",
     "@dietrichgebert/ponytail",
-    "opencode-acp@latest",
     "oh-my-opencode",
     "context-mode"
   ],
