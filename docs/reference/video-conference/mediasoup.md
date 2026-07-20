@@ -335,6 +335,7 @@ mediasoup 的核心抽象是四个实体：Worker → Router → Transport → P
 > OMSPBase: docs/research/video-conference.md
 
 ---
+**相关决策**: D97, D138, D-SFU-WORKER, D-SIMULCAST, D50
 
 ## 附录 A：mediasoup Demo 部署步骤
 

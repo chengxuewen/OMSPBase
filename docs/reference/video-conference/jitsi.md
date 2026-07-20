@@ -330,6 +330,7 @@
 
 
 ---
+**相关决策**: D50, D52, D-SFU-WORKER, Colibri2(Phase 2 参考)
 
 ## 附录 A：Jitsi Docker Compose 完整部署
 

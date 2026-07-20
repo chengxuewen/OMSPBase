@@ -526,3 +526,4 @@ Kurento 的 MediaPipeline 模型是视频处理流水线的**最佳参考实现*
 - 单进程瓶颈 → 多线程/多进程调度
 - GStreamer 强绑定 → 后端无关 trait
 - 全功能膨胀 → 聚焦 AUDE 生态核心场景
+**相关决策**: D97 (SFU/MCU混合), D144-D145 (多后端trait)

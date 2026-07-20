@@ -354,6 +354,7 @@
 > OMSPBase: docs/research/video-conference.md
 
 ---
+**相关决策**: D14, D53, D95(obsolete→D97)
 
 ## 附录 A：LiveKit 5 分钟快速部署
 
