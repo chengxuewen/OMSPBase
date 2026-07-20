@@ -1,14 +1,18 @@
 //! PeerConnection thin wrapper.
 //!
-//! With `webrtc-backend` feature: wraps webrtc-rs RTCPeerConnection.
-//! Without: stub (returns success, no actual networking).
+//! Delegates WebRTC operations to the backend (PcBackend trait)
+//! via compile-time type alias dispatch. Track registry and W3C
+//! API methods are backend-agnostic and handled directly.
 
-#[cfg(feature = "webrtc-backend")]
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::backend::{ActivePc, PcBackend};
 use crate::channel::{DataChannel, DataChannelInit};
-use crate::sdp::{SdpType, SessionDescription};
+use crate::sdp::SessionDescription;
+use crate::track::{TrackKind, TrackSender, TrackRef};
 use crate::RtcError;
+use crate::rtp::{RtpReceiver, RtpSender};
 
 // ── Connection state enums ──
 
@@ -67,40 +71,24 @@ pub struct IceCandidate {
 
 // ── PeerConnectionFactory ──
 
+use crate::backend::ActiveFactory;
+
 pub struct PeerConnectionFactory {
-    #[cfg(feature = "webrtc-backend")]
-    api: webrtc::api::API,
+    backend: ActiveFactory,
 }
 
-#[cfg(not(feature = "webrtc-backend"))]
-impl PeerConnectionFactory {
-    pub fn new() -> Self { Self {} }
-    pub async fn create_peer_connection(&self, _config: PcConfig) -> Result<PeerConnection, RtcError> {
-        tracing::info!("Creating PeerConnection (stub)");
-        Ok(PeerConnection {})
-    }
-}
-
-#[cfg(feature = "webrtc-backend")]
 impl PeerConnectionFactory {
     pub fn new() -> Self {
-        let api = webrtc::api::APIBuilder::new().build();
-        Self { api }
+        Self { backend: ActiveFactory::default() }
     }
 
     pub async fn create_peer_connection(&self, config: PcConfig) -> Result<PeerConnection, RtcError> {
-        tracing::info!("Creating PeerConnection (webrtc-rs)");
-        let mut cfg = webrtc::peer_connection::configuration::RTCConfiguration::default();
-        for srv in &config.ice_servers {
-            cfg.ice_servers.push(webrtc::ice_transport::ice_server::RTCIceServer {
-                urls: srv.urls.clone(),
-                username: srv.username.clone(),
-                credential: srv.password.clone(),
-            });
-        }
-        let pc = self.api.new_peer_connection(cfg).await
-            .map_err(|e| RtcError::PeerConnection(e.to_string()))?;
-        Ok(PeerConnection { inner: Some(Arc::new(pc)) })
+        let pc_backend = self.backend.create_peer_connection(config).await?;
+        Ok(PeerConnection {
+            backend: pc_backend,
+            tracks: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            on_track_callback: Arc::new(std::sync::Mutex::new(None)),
+        })
     }
 }
 
@@ -110,128 +98,103 @@ impl Default for PeerConnectionFactory {
 
 // ── PeerConnection ──
 
+/// Callback type for onTrack (D146).
+type OnTrackCallback = Arc<std::sync::Mutex<Option<Box<dyn Fn(RtpReceiver) + Send + Sync>>>>;
+
 pub struct PeerConnection {
-    #[cfg(feature = "webrtc-backend")]
-    inner: Option<Arc<webrtc::peer_connection::RTCPeerConnection>>,
+    pub(crate) backend: ActivePc,
+    tracks: Arc<std::sync::Mutex<HashMap<String, TrackRef>>>,
+    on_track_callback: OnTrackCallback,
 }
 
-#[cfg(not(feature = "webrtc-backend"))]
-impl PeerConnection {
-    pub async fn create_offer(&self, _: &OfferOptions) -> Result<SessionDescription, RtcError> {
-        Ok(SessionDescription::new(SdpType::Offer, String::new()))
-    }
-    pub async fn create_answer(&self, _: &AnswerOptions) -> Result<SessionDescription, RtcError> {
-        Ok(SessionDescription::new(SdpType::Answer, String::new()))
-    }
-    pub async fn set_local_description(&self, _: &SessionDescription) -> Result<(), RtcError> { Ok(()) }
-    pub async fn set_remote_description(&self, _: &SessionDescription) -> Result<(), RtcError> { Ok(()) }
-    pub async fn add_ice_candidate(&self, _: &IceCandidate) -> Result<(), RtcError> { Ok(()) }
-    pub async fn create_data_channel(&self, label: &str, _: DataChannelInit) -> Result<DataChannel, RtcError> {
-        Ok(DataChannel { label: label.to_string(), id: 0 })
-    }
-    pub fn connection_state(&self) -> PeerConnectionState { PeerConnectionState::New }
-    pub fn ice_connection_state(&self) -> IceConnectionState { IceConnectionState::New }
-    pub fn ice_gathering_state(&self) -> IceGatheringState { IceGatheringState::New }
-    pub fn signaling_state(&self) -> SignalingState { SignalingState::Stable }
-    pub async fn close(&self) {}
-}
+/// Maximum tracks per PeerConnection (D148).
+pub const MAX_TRACKS: usize = 8;
 
-#[cfg(feature = "webrtc-backend")]
-impl PeerConnection {
-    fn inner(&self) -> &Arc<webrtc::peer_connection::RTCPeerConnection> {
-        self.inner.as_ref().expect("PeerConnection already closed")
-    }
+// ── Common methods (both backends) ──
 
+impl PeerConnection {
     pub async fn create_offer(&self, options: &OfferOptions) -> Result<SessionDescription, RtcError> {
-        let mut opts = webrtc::peer_connection::offer_answer_options::RTCOfferOptions::default();
-        if options.ice_restart { opts.ice_restart = true; }
-        let sdp = self.inner().create_offer(Some(opts)).await?;
-        Ok(SessionDescription { sdp_type: SdpType::Offer, sdp: sdp.sdp })
+        self.backend.create_offer(options).await
     }
 
-    pub async fn create_answer(&self, _: &AnswerOptions) -> Result<SessionDescription, RtcError> {
-        let sdp = self.inner().create_answer(None).await?;
-        Ok(SessionDescription { sdp_type: SdpType::Answer, sdp: sdp.sdp })
+    pub async fn create_answer(&self, options: &AnswerOptions) -> Result<SessionDescription, RtcError> {
+        self.backend.create_answer(options).await
     }
 
     pub async fn set_local_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
-        let sdp = match desc.sdp_type {
-            SdpType::Offer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(desc.sdp.clone())?,
-            SdpType::Answer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::answer(desc.sdp.clone())?,
-            _ => return Err(RtcError::Sdp("unsupported SDP type".into())),
-        };
-        self.inner().set_local_description(sdp).await?;
-        Ok(())
+        self.backend.set_local_description(desc).await
     }
 
     pub async fn set_remote_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
-        let sdp = match desc.sdp_type {
-            SdpType::Offer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(desc.sdp.clone())?,
-            SdpType::Answer => webrtc::peer_connection::sdp::session_description::RTCSessionDescription::answer(desc.sdp.clone())?,
-            _ => return Err(RtcError::Sdp("unsupported SDP type".into())),
-        };
-        self.inner().set_remote_description(sdp).await?;
-        Ok(())
+        self.backend.set_remote_description(desc).await
     }
 
     pub async fn add_ice_candidate(&self, candidate: &IceCandidate) -> Result<(), RtcError> {
-        let c = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
-            candidate: candidate.candidate.clone(),
-            sdp_mid: candidate.sdp_mid.clone(),
-            sdp_mline_index: candidate.sdp_mline_index,
-            ..Default::default()
-        };
-        self.inner().add_ice_candidate(c).await?;
-        Ok(())
+        self.backend.add_ice_candidate(candidate).await
     }
 
-    pub async fn create_data_channel(&self, label: &str, _: DataChannelInit) -> Result<DataChannel, RtcError> {
-        let dc = self.inner().create_data_channel(label, None).await
-            .map_err(|e| RtcError::DataChannel(e.to_string()))?;
-        Ok(DataChannel::from_webrtc(dc).await)
+    pub async fn create_data_channel(&self, label: &str, init: DataChannelInit) -> Result<DataChannel, RtcError> {
+        self.backend.create_data_channel(label, init).await
     }
 
     pub fn connection_state(&self) -> PeerConnectionState {
-        use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState::*;
-        match self.inner().connection_state() {
-            New => PeerConnectionState::New, Connecting => PeerConnectionState::Connecting,
-            Connected => PeerConnectionState::Connected, Disconnected => PeerConnectionState::Disconnected,
-            Failed => PeerConnectionState::Failed, Closed => PeerConnectionState::Closed,
-            _ => PeerConnectionState::New,
-        }
+        self.backend.connection_state()
     }
+
     pub fn ice_connection_state(&self) -> IceConnectionState {
-        use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::*;
-        match self.inner().ice_connection_state() {
-            New => IceConnectionState::New, Checking => IceConnectionState::Checking,
-            Connected => IceConnectionState::Connected, Completed => IceConnectionState::Completed,
-            Failed => IceConnectionState::Failed, Disconnected => IceConnectionState::Disconnected,
-            Closed => IceConnectionState::Closed, _ => IceConnectionState::New,
-        }
+        self.backend.ice_connection_state()
     }
+
     pub fn ice_gathering_state(&self) -> IceGatheringState {
-        use webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState::*;
-        match self.inner().ice_gathering_state() {
-            Unspecified | New => IceGatheringState::New, Gathering => IceGatheringState::Gathering,
-            Complete => IceGatheringState::Complete, _ => IceGatheringState::New,
-        }
+        self.backend.ice_gathering_state()
     }
+
     pub fn signaling_state(&self) -> SignalingState {
-        use webrtc::peer_connection::signaling_state::RTCSignalingState::*;
-        match self.inner().signaling_state() {
-            Stable => SignalingState::Stable, HaveLocalOffer => SignalingState::HaveLocalOffer,
-            Closed => SignalingState::Closed, _ => SignalingState::Stable,
-        }
+        self.backend.signaling_state()
     }
 
     pub async fn close(&self) {
-        if let Some(pc) = &self.inner {
-            let _ = pc.close().await;
-        }
+        self.backend.close().await;
     }
 
-    /// Set on_data_channel callback. The closure receives the raw RTCDataChannel.
-    /// Caller should use DataChannel::from_webrtc to create a wrapper, then spool it.
+    // ── Track registry (backend-agnostic) ──
+
+    pub fn add_track(&self, track_id: &str, kind: TrackKind) -> Result<String, RtcError> {
+        let mut tracks = self.tracks.lock().unwrap();
+        if tracks.len() >= MAX_TRACKS {
+            return Err(RtcError::Track("max tracks reached".into()));
+        }
+        let sender = TrackSender::new(track_id.to_string(), kind);
+        let id = track_id.to_string();
+        tracks.insert(id.clone(), TrackRef::Sender(sender));
+        Ok(id)
+    }
+
+    pub fn remove_track(&self, track_id: &str) -> Result<(), RtcError> {
+        let mut tracks = self.tracks.lock().unwrap();
+        tracks.remove(track_id).map(|_| ()).ok_or_else(|| {
+            RtcError::Track(format!("track not found: {}", track_id))
+        })
+    }
+
+    pub fn get_track(&self, track_id: &str) -> Option<TrackRef> {
+        let tracks = self.tracks.lock().unwrap();
+        tracks.get(track_id).cloned()
+    }
+
+    pub fn track_count(&self) -> usize {
+        self.tracks.lock().unwrap().len()
+    }
+
+    pub fn track_ids(&self) -> Vec<String> {
+        self.tracks.lock().unwrap().keys().cloned().collect()
+    }
+}
+
+// ── webrtc-rs specific callback methods ──
+
+#[cfg(feature = "backend-webrtc-rs")]
+impl PeerConnection {
     pub fn on_data_channel(
         &self,
         f: Box<
@@ -243,10 +206,9 @@ impl PeerConnection {
                 + 'static,
         >,
     ) {
-        self.inner().on_data_channel(f);
+        self.backend.on_data_channel(f);
     }
 
-    /// Set on_ice_candidate callback. None means gathering complete.
     pub fn on_ice_candidate(
         &self,
         f: Box<
@@ -258,22 +220,70 @@ impl PeerConnection {
                 + 'static,
         >,
     ) {
-        self.inner().on_ice_candidate(f);
+        self.backend.on_ice_candidate(f);
+    }
+}
+
+// ── W3C API methods (D146) ──
+
+#[allow(non_snake_case)]
+impl PeerConnection {
+    /// W3C addTrack — adds a sender track and returns the RTCRtpSender.
+    pub fn addTrack(&self, track_id: &str, kind: TrackKind) -> Result<RtpSender, RtcError> {
+        self.add_track(track_id, kind)?;
+        let tr = self.get_track(track_id).ok_or_else(|| RtcError::Track("track disappeared".into()))?;
+        Ok(RtpSender::new(tr))
+    }
+
+    /// W3C getSenders — returns all sender tracks as RtpSender.
+    pub fn getSenders(&self) -> Vec<RtpSender> {
+        self.tracks.lock().unwrap().values()
+            .filter(|tr| matches!(tr, TrackRef::Sender(_)))
+            .map(|tr| RtpSender::new(tr.clone()))
+            .collect()
+    }
+
+    /// W3C getReceivers — returns all receiver tracks as RtpReceiver.
+    pub fn getReceivers(&self) -> Vec<RtpReceiver> {
+        self.tracks.lock().unwrap().values()
+            .filter(|tr| matches!(tr, TrackRef::Receiver(_)))
+            .map(|tr| RtpReceiver::new(tr.clone()))
+            .collect()
+    }
+
+    /// W3C onTrack — register callback for incoming remote tracks.
+    pub fn onTrack<F>(&self, callback: F)
+    where F: Fn(RtpReceiver) + Send + Sync + 'static {
+        *self.on_track_callback.lock().unwrap() = Some(Box::new(callback));
     }
 }
 
 impl Clone for PeerConnection {
     fn clone(&self) -> Self {
-        #[cfg(feature = "webrtc-backend")]
-        { Self { inner: self.inner.clone() } }
-        #[cfg(not(feature = "webrtc-backend"))]
-        { Self {} }
+        Self {
+            backend: self.backend.clone(),
+            tracks: self.tracks.clone(),
+            on_track_callback: Arc::clone(&self.on_track_callback),
+        }
     }
 }
 
-#[cfg(all(test, not(feature = "webrtc-backend")))]
+impl std::fmt::Debug for PeerConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerConnection")
+            .field("connection_state", &self.connection_state())
+            .field("track_count", &self.track_count())
+            .finish()
+    }
+}
+
+// ── Tests ──
+
+#[cfg(all(test, not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys"))))]
 mod tests {
     use super::*;
+    use crate::sdp::SdpType;
+    use crate::channel::DataChannelInit;
 
     #[test]
     fn stub_factory_default_creates() {
@@ -347,5 +357,100 @@ mod tests {
         let cfg = PcConfig::default();
         assert!(cfg.ice_servers.is_empty());
         assert_eq!(cfg.ice_transport_type, IceTransportsType::All);
+    }
+
+    // ── D148: multi-track registry tests ──
+
+    #[test]
+    fn add_track_registers_in_map() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let id = pc.add_track("video-1", TrackKind::Video).unwrap();
+        assert_eq!(id, "video-1");
+        assert_eq!(pc.track_count(), 1);
+        let ids = pc.track_ids();
+        assert!(ids.contains(&"video-1".to_string()));
+    }
+
+    #[test]
+    fn add_track_respects_max() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        for i in 0..8 {
+            pc.add_track(&format!("track-{}", i), TrackKind::Video).unwrap();
+        }
+        assert_eq!(pc.track_count(), 8);
+        let err = pc.add_track("overflow", TrackKind::Video).unwrap_err();
+        assert!(matches!(err, RtcError::Track(_)));
+    }
+
+    #[test]
+    fn remove_track_not_found() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let err = pc.remove_track("nonexistent").unwrap_err();
+        assert!(matches!(err, RtcError::Track(_)));
+    }
+
+    #[test]
+    fn remove_track_succeeds() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        pc.add_track("audio-1", TrackKind::Audio).unwrap();
+        assert_eq!(pc.track_count(), 1);
+        pc.remove_track("audio-1").unwrap();
+        assert_eq!(pc.track_count(), 0);
+    }
+
+    #[test]
+    fn get_track_returns_clone() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        pc.add_track("vid-1", TrackKind::Video).unwrap();
+        let tr = pc.get_track("vid-1").unwrap();
+        assert_eq!(tr.id(), "vid-1");
+        assert_eq!(tr.kind(), TrackKind::Video);
+    }
+
+    #[test]
+    fn get_track_missing_returns_none() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        assert!(pc.get_track("missing").is_none());
+    }
+
+    // ── D146: W3C API tests ──
+
+    #[test]
+    fn add_track_w3c_returns_sender() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        let sender = pc.addTrack("video-w3c", TrackKind::Video).unwrap();
+        assert_eq!(sender.track_id, "video-w3c");
+        assert_eq!(sender.kind, TrackKind::Video);
+    }
+
+    #[test]
+    fn get_senders_filters_correctly() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        pc.addTrack("vid-1", TrackKind::Video).unwrap();
+        pc.addTrack("vid-2", TrackKind::Video).unwrap();
+        let senders = pc.getSenders();
+        assert_eq!(senders.len(), 2);
+    }
+
+    #[test]
+    fn get_receivers_empty_initially() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        assert!(pc.getReceivers().is_empty());
+    }
+
+    #[test]
+    fn on_track_registers_callback() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let pc = rt.block_on(PeerConnectionFactory::new().create_peer_connection(PcConfig::default())).unwrap();
+        pc.onTrack(|_receiver| {});
     }
 }

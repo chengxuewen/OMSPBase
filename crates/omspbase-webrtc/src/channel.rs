@@ -1,8 +1,9 @@
 //! DataChannel thin wrapper.
 //!
-//! With `webrtc-backend` feature: wraps webrtc-rs RTCDataChannel.
-//! Without: stub (no-op send, Closed state).
+//! Delegates operations to the backend (DcBackend trait)
+//! via compile-time type alias dispatch.
 
+use crate::backend::{ActiveDc, DcBackend};
 use crate::RtcError;
 
 #[derive(Debug, Clone)]
@@ -28,86 +29,47 @@ pub enum DataChannelState { Connecting, Open, Closing, Closed }
 pub struct DataChannel {
     pub(crate) label: String,
     pub(crate) id: i32,
-    #[cfg(feature = "webrtc-backend")]
-    inner: Option<std::sync::Arc<webrtc::data_channel::RTCDataChannel>>,
+    pub(crate) backend: ActiveDc,
 }
 
-// ── Stub ──
-#[cfg(not(feature = "webrtc-backend"))]
 impl DataChannel {
-    pub fn label(&self) -> &str { &self.label }
-    pub fn id(&self) -> i32 { self.id }
-    pub fn state(&self) -> DataChannelState { DataChannelState::Closed }
-    pub async fn send(&self, _: &[u8]) -> Result<(), RtcError> { Ok(()) }
-    pub async fn send_text(&self, t: &str) -> Result<(), RtcError> { self.send(t.as_bytes()).await }
-    pub async fn close(&mut self) {}
-    pub async fn spool(&self) -> DataChannelRx { DataChannelRx::stub() }
-}
-
-// ── webrtc-rs backend ──
-#[cfg(feature = "webrtc-backend")]
-impl DataChannel {
-    pub async fn from_webrtc(dc: std::sync::Arc<webrtc::data_channel::RTCDataChannel>) -> Self {
-        let id = dc.id() as i32;
-        let label = dc.label().to_string();
-        Self { label, id, inner: Some(dc) }
-    }
-
-    fn inner(&self) -> &std::sync::Arc<webrtc::data_channel::RTCDataChannel> {
-        self.inner.as_ref().expect("DataChannel already closed")
-    }
-
     pub fn label(&self) -> &str { &self.label }
     pub fn id(&self) -> i32 { self.id }
 
     pub fn state(&self) -> DataChannelState {
-        use webrtc::data_channel::data_channel_state::RTCDataChannelState::*;
-        match self.inner().ready_state() {
-            Connecting => DataChannelState::Connecting, Open => DataChannelState::Open,
-            Closing => DataChannelState::Closing, Closed => DataChannelState::Closed,
-            _ => DataChannelState::Closed,
-        }
+        self.backend.state()
     }
 
     pub async fn send(&self, data: &[u8]) -> Result<(), RtcError> {
-        let b = bytes::Bytes::copy_from_slice(data);
-        self.inner().send(&b).await.map(|_| ()).map_err(|e| RtcError::DataChannel(e.to_string()))
+        self.backend.send(data).await
     }
 
     pub async fn send_text(&self, text: &str) -> Result<(), RtcError> {
-        self.inner().send_text(text).await.map(|_| ()).map_err(|e| RtcError::DataChannel(e.to_string()))
+        self.backend.send_text(text).await
     }
 
     pub async fn spool(&self) -> DataChannelRx {
-        let dc = self.inner().clone();
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let tx2 = tx.clone();
-        dc.on_open(Box::new(move || { let _ = tx2.send(DataChannelEvent::Open); Box::pin(async {}) }));
-        let tx2 = tx.clone();
-        dc.on_close(Box::new(move || { let _ = tx2.send(DataChannelEvent::Closed); Box::pin(async {}) }));
-        let tx2 = tx.clone();
-        dc.on_message(Box::new(move |msg| {
-            let data = msg.data.to_vec();
-            let _ = tx2.send(DataChannelEvent::Message(DataMessage { data }));
-            Box::pin(async {})
-        }));
-        dc.on_error(Box::new(move |err| { let _ = tx.send(DataChannelEvent::Error(err.to_string())); Box::pin(async {}) }));
-        DataChannelRx { inner: Some(rx) }
+        self.backend.spool().await
     }
 
     pub async fn close(&mut self) {
-        if let Some(dc) = self.inner.take() {
-            dc.close().await.ok();
-        }
+        self.backend.close().await;
     }
 }
-
+#[cfg(feature = "backend-webrtc-rs")]
+impl DataChannel {
+    pub async fn from_webrtc(dc: std::sync::Arc<webrtc::data_channel::RTCDataChannel>) -> Self {
+        let label = dc.label().to_string();
+        let id = dc.id() as i32;
+        Self { label, id, backend: crate::backend::webrtc_rs::WebrtcRsDc::new(dc) }
+    }
+}
 impl Clone for DataChannel {
     fn clone(&self) -> Self {
         Self {
-            label: self.label.clone(), id: self.id,
-            #[cfg(feature = "webrtc-backend")]
-            inner: self.inner.clone(),
+            label: self.label.clone(),
+            id: self.id,
+            backend: self.backend.clone(),
         }
     }
 }
@@ -135,48 +97,52 @@ impl std::fmt::Debug for DataChannelEvent {
 #[derive(Debug, Clone)]
 pub struct DataMessage { pub data: Vec<u8> }
 
+/// Receiver for DataChannel events.
+/// Created by spool() — polls the backend's event stream.
 pub struct DataChannelRx {
-    #[cfg(feature = "webrtc-backend")]
-    inner: Option<tokio::sync::mpsc::UnboundedReceiver<DataChannelEvent>>,
+    rx: Option<tokio::sync::mpsc::UnboundedReceiver<DataChannelEvent>>,
 }
 
-impl DataChannelRx {
-    #[cfg(not(feature = "webrtc-backend"))]
-    pub(crate) fn stub() -> Self { Self {} }
+    impl DataChannelRx {
+    #[cfg(feature = "backend-webrtc-rs")]
+    pub(crate) fn new(rx: Option<tokio::sync::mpsc::UnboundedReceiver<DataChannelEvent>>) -> Self {
+        Self { rx }
+    }
+
+    pub(crate) fn stub() -> Self {
+        Self { rx: None }
+    }
+
     pub async fn recv(&mut self) -> Option<DataChannelEvent> {
-        #[cfg(feature = "webrtc-backend")]
-        {
-            match &mut self.inner {
-                Some(rx) => rx.recv().await,
-                None => None,
-            }
+        match &mut self.rx {
+            Some(rx) => rx.recv().await,
+            None => std::future::pending().await,
         }
-        #[cfg(not(feature = "webrtc-backend"))]
-        { std::future::pending().await }
     }
 }
 
-#[cfg(all(test, not(feature = "webrtc-backend")))]
+// ── Tests ──
+
+#[cfg(all(test, not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys"))))]
 mod tests {
     use super::*;
 
     #[test]
     fn stub_data_channel_state_is_closed() {
-        let dc = DataChannel { label: "test".into(), id: 0 };
+        let dc = DataChannel { label: "test".into(), id: 0, backend: Default::default() };
         assert_eq!(dc.state(), DataChannelState::Closed);
     }
 
     #[test]
     fn stub_label_and_id() {
-        let dc = DataChannel { label: "mylabel".into(), id: 42 };
+        let dc = DataChannel { label: "mylabel".into(), id: 42, backend: Default::default() };
         assert_eq!(dc.label(), "mylabel");
         assert_eq!(dc.id(), 42);
     }
 
     #[test]
     fn stub_send_is_noop() {
-        let dc = DataChannel { label: "x".into(), id: 0 };
-        // ponytail: block_on for unit test simplicity; always Ok
+        let dc = DataChannel { label: "x".into(), id: 0, backend: Default::default() };
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             assert!(dc.send(b"hello").await.is_ok());

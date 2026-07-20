@@ -1,16 +1,139 @@
-//! Video track wrapper around webrtc-sys.
+//! Media track types — sending (TrackSender) and receiving (TrackReceiver).
+//!
+//! # Multi-track architecture
+//! - TrackKind distinguishes Video/Audio tracks (D147)
+//! - TrackSender writes encoded frames to the RTP pipeline (delegates to backend)
+//! - TrackReceiver reads frames from remote PeerConnection
+//! - TrackRef is the unified handle enum for registry management (D148)
 
-/// Receiver-side video track.
+use crate::backend::{ActiveTrack, TrackWriteBackend};
+use crate::RtcError;
+
+/// Audio track configuration (D147).
+///
+/// Opus defaults: 48kHz sample rate, 2 channels (stereo).
+/// Frame duration: 20ms (960 samples per channel at 48kHz).
+#[derive(Debug, Clone, Copy)]
+pub struct AudioTrackConfig {
+    pub sample_rate: u32,
+    pub channels: u32,
+}
+
+impl Default for AudioTrackConfig {
+    fn default() -> Self {
+        Self { sample_rate: 48000, channels: 2 }
+    }
+}
+
+impl AudioTrackConfig {
+    /// Samples per frame at 20ms (standard Opus frame duration).
+    pub fn samples_per_frame(&self) -> u32 {
+        self.sample_rate / 50 // 48000 / 50 = 960
+    }
+
+    /// Frame duration in milliseconds.
+    pub fn frame_duration_ms(&self) -> u64 {
+        20 // ponytail: Opus standard 20ms frame
+    }
+}
+
+/// Track media type (D147).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackKind {
+    Video,
+    Audio,
+}
+
+impl TrackKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TrackKind::Video => "video",
+            TrackKind::Audio => "audio",
+        }
+    }
+}
+
+/// Receiver-side video/audio track.
 /// Receives frames from a remote PeerConnection via on_track callback.
 #[derive(Debug, Clone)]
 pub struct TrackReceiver {
     pub id: String,
-    pub kind: String,
+    pub kind: TrackKind,
 }
 
 impl TrackReceiver {
-    pub fn new(id: String, kind: String) -> Self {
+    pub fn new(id: String, kind: TrackKind) -> Self {
         Self { id, kind }
+    }
+}
+
+/// Sender-side video/audio track.
+/// Pushes encoded frames to the WebRTC RTP pipeline through the backend.
+///
+/// # Backend
+/// - `backend-webrtc-rs`: wraps webrtc `TrackLocalStaticSample` for RTP packetization
+/// - stub: logs and returns Ok (no-op for testing without WebRTC)
+#[derive(Debug, Clone)]
+pub struct TrackSender {
+    pub id: String,
+    pub kind: TrackKind,
+    /// Audio configuration (D147). Only meaningful when kind == Audio.
+    /// None for video tracks.
+    pub audio_config: Option<AudioTrackConfig>,
+    pub(crate) backend: ActiveTrack,
+}
+
+impl TrackSender {
+    pub fn new(id: String, kind: TrackKind) -> Self {
+        Self {
+            id,
+            kind,
+            audio_config: None,
+            backend: ActiveTrack::default(),
+        }
+    }
+
+    /// Create an audio track with Opus configuration (D147).
+    /// Defaults: 48kHz, 2 channels, 20ms frames.
+    pub fn new_audio(id: String, config: AudioTrackConfig) -> Self {
+        Self {
+            id,
+            kind: TrackKind::Audio,
+            audio_config: Some(config),
+            backend: ActiveTrack::default(),
+        }
+    }
+
+    /// Write an encoded frame to the track.
+    /// For audio tracks: uses frame_duration_ms from AudioTrackConfig.
+    /// For video tracks: defaults to 33ms (30fps).
+    /// Delegates to the active backend.
+    pub async fn write_frame(&self, data: &[u8]) -> Result<(), RtcError> {
+        self.backend.write_frame(data, self.kind, self.audio_config.as_ref()).await
+    }
+}
+
+/// Unified handle for multi-track registry (D148).
+/// HashMap<String, TrackRef> in PeerConnection manages tracks.
+#[derive(Debug, Clone)]
+pub enum TrackRef {
+    Sender(TrackSender),
+    Receiver(TrackReceiver),
+}
+
+impl TrackRef {
+    pub fn id(&self) -> &str {
+        match self {
+            TrackRef::Sender(t) => &t.id,
+            TrackRef::Receiver(t) => &t.id,
+        }
+    }
+
+    pub fn kind(&self) -> TrackKind {
+        match self {
+            TrackRef::Sender(t) => t.kind,
+            TrackRef::Receiver(t) => t.kind,
+        }
     }
 }
 
@@ -19,17 +142,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_sets_fields() {
-        let tr = TrackReceiver::new("track-1".into(), "video".into());
-        assert_eq!(tr.id, "track-1");
-        assert_eq!(tr.kind, "video");
+    fn track_kind_as_str() {
+        assert_eq!(TrackKind::Video.as_str(), "video");
+        assert_eq!(TrackKind::Audio.as_str(), "audio");
     }
 
     #[test]
-    fn clone_preserves_fields() {
-        let tr = TrackReceiver::new("t2".into(), "audio".into());
+    fn receiver_new_sets_fields() {
+        let tr = TrackReceiver::new("track-1".into(), TrackKind::Video);
+        assert_eq!(tr.id, "track-1");
+        assert_eq!(tr.kind, TrackKind::Video);
+    }
+
+    #[test]
+    fn receiver_clone_preserves_fields() {
+        let tr = TrackReceiver::new("t2".into(), TrackKind::Audio);
         let tr2 = tr.clone();
         assert_eq!(tr2.id, "t2");
-        assert_eq!(tr2.kind, "audio");
+        assert_eq!(tr2.kind, TrackKind::Audio);
+    }
+
+    #[test]
+    fn sender_new_sets_fields() {
+        let ts = TrackSender::new("ts-1".into(), TrackKind::Video);
+        assert_eq!(ts.id, "ts-1");
+        assert_eq!(ts.kind, TrackKind::Video);
+    }
+
+    #[test]
+    fn track_ref_id_and_kind() {
+        let ts = TrackSender::new("ref-ts".into(), TrackKind::Audio);
+        let tr = TrackReceiver::new("ref-tr".into(), TrackKind::Video);
+        let r1 = TrackRef::Sender(ts);
+        let r2 = TrackRef::Receiver(tr);
+        assert_eq!(r1.id(), "ref-ts");
+        assert_eq!(r1.kind(), TrackKind::Audio);
+        assert_eq!(r2.id(), "ref-tr");
+        assert_eq!(r2.kind(), TrackKind::Video);
+    }
+    #[test]
+    fn audio_track_config_defaults() {
+        let cfg = AudioTrackConfig::default();
+        assert_eq!(cfg.sample_rate, 48000);
+        assert_eq!(cfg.channels, 2);
+        assert_eq!(cfg.samples_per_frame(), 960);
+        assert_eq!(cfg.frame_duration_ms(), 20);
+    }
+
+    #[test]
+    fn new_audio_sets_kind_and_config() {
+        let ts = TrackSender::new_audio("mic-1".into(), AudioTrackConfig::default());
+        assert_eq!(ts.kind, TrackKind::Audio);
+        assert!(ts.audio_config.is_some());
+        assert_eq!(ts.audio_config.unwrap().sample_rate, 48000);
+    }
+
+    #[test]
+    fn video_track_has_no_audio_config() {
+        let ts = TrackSender::new("vid-1".into(), TrackKind::Video);
+        assert_eq!(ts.kind, TrackKind::Video);
+        assert!(ts.audio_config.is_none());
     }
 }

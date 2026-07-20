@@ -1,18 +1,29 @@
-//! omspbase-webrtc — thin wrapper around webrtc-rs (pure Rust WebRTC).
+//! omspbase-webrtc — multi-backend W3C WebRTC API wrapper.
 //!
-//! Provides PeerConnection and DataChannel types with two backends:
-//! - `webrtc-backend` feature: real webrtc-rs implementation
+//! Provides PeerConnection and DataChannel types through
+//! [`RtcEngine::create_factory`] as the unified entry point.
+//! Two backends:
+//! - `backend-webrtc-rs` feature: real webrtc-rs implementation
 //! - default (no feature): stub for compilation without WebRTC
 
 pub mod channel;
 pub mod peer;
 pub mod sdp;
 pub mod track;
+pub mod engine;
+pub mod rtp;
+pub mod rtp_params;
+pub mod stats;
+pub(crate) mod backend;
 
 pub use channel::*;
 pub use peer::*;
 pub use sdp::*;
 pub use track::*;
+pub use engine::*;
+pub use rtp::*;
+pub use rtp_params::*;
+pub use stats::*;
 
 /// Error type for all WebRTC operations.
 #[derive(Debug, thiserror::Error)]
@@ -29,7 +40,7 @@ pub enum RtcError {
     Internal(String),
 }
 
-#[cfg(feature = "webrtc-backend")]
+#[cfg(feature = "backend-webrtc-rs")]
 impl From<webrtc::error::Error> for RtcError {
     fn from(e: webrtc::error::Error) -> Self {
         RtcError::Internal(e.to_string())
@@ -37,5 +48,5 @@ impl From<webrtc::error::Error> for RtcError {
 }
 
 /// Re-export webrtc-rs for callback types used by consumers.
-#[cfg(feature = "webrtc-backend")]
+#[cfg(feature = "backend-webrtc-rs")]
 pub use webrtc;

@@ -1,7 +1,7 @@
 //! E2E test: PeerConnection + DataChannel creation and SDP exchange.
-//! Run with: cargo test -p omspbase-webrtc --features webrtc-backend
+//! Run with: cargo test -p omspbase-webrtc --features backend-webrtc-rs
 
-#[cfg(feature = "webrtc-backend")]
+#[cfg(feature = "backend-webrtc-rs")]
 mod tests {
     use omspbase_webrtc::*;
 
