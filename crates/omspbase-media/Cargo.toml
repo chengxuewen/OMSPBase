@@ -7,8 +7,13 @@ license.workspace = true
 
 [dependencies]
 thiserror = "2"
-rand = "0.8"
 tracing = "0.1"
+rand = "0.8"
+
+[dev-dependencies]
+eframe = "0.30"
+egui = "0.30"
+image = "0.25"
 
 [features]
 default = ["backend-libyuv-sys"]
