@@ -1,3 +1,10 @@
+// ── Generator — multi-mode video frame generator ───────
+
+pub mod fonts;
+pub mod squares;
+pub mod smpte_bars;
+pub mod timestamp;
+
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU64, Ordering},
@@ -5,107 +12,17 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use rand::Rng;
-use rand::SeedableRng;
+// Re-exports
+pub use fonts::{Anchor, BitmapFont, TextBurner};
+pub use squares::{ColorStrategy, SquaresConfig, SquaresPattern};
+pub use smpte_bars::SmpteBarsPattern;
+pub use timestamp::{TimestampFormat, TimestampOverlay};
 
 use super::sink::{SinkId, VideoSink, VideoSinkWants};
 use super::source::VideoSource;
 use crate::base::buffer::I420Buffer;
 use crate::base::buffer::VideoBuffer;
 use crate::base::frame::{BoxVideoFrame, VideoFrame};
-
-// ── Bitmap Font ─────────────────────────────────────────
-
-/// Character-cell width in pixels.
-const GLYPH_WIDTH: u32 = 6;
-/// Character-cell height in pixels.
-const GLYPH_HEIGHT: u32 = 10;
-
-/// Stored bitmap for a single glyph — 10 rows of 6 usable bits each.
-/// Bits 5–0 map to columns left→right (MSB = leftmost pixel).
-/// Bits 7–6 are unused.
-struct Glyph(&'static [u8; 10]);
-
-static GLYPHS: [Glyph; 13] = [
-    Glyph(&[0x1E, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x1E, 0x00]), // 0
-    Glyph(&[0x0C, 0x1C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3F, 0x00]), // 1
-    Glyph(&[0x1E, 0x33, 0x01, 0x03, 0x06, 0x0C, 0x18, 0x30, 0x3F, 0x00]), // 2
-    Glyph(&[0x1E, 0x33, 0x01, 0x03, 0x0E, 0x03, 0x01, 0x33, 0x1E, 0x00]), // 3
-    Glyph(&[0x03, 0x07, 0x0F, 0x1B, 0x33, 0x3F, 0x03, 0x03, 0x03, 0x00]), // 4
-    Glyph(&[0x3F, 0x30, 0x30, 0x3E, 0x03, 0x03, 0x03, 0x33, 0x1E, 0x00]), // 5
-    Glyph(&[0x0E, 0x18, 0x30, 0x3E, 0x33, 0x33, 0x33, 0x33, 0x1E, 0x00]), // 6
-    Glyph(&[0x3F, 0x03, 0x03, 0x06, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x00]), // 7
-    Glyph(&[0x1E, 0x33, 0x33, 0x33, 0x1E, 0x33, 0x33, 0x33, 0x1E, 0x00]), // 8
-    Glyph(&[0x1E, 0x33, 0x33, 0x33, 0x1F, 0x03, 0x06, 0x0C, 0x18, 0x00]), // 9
-    Glyph(&[0x00, 0x0C, 0x0C, 0x00, 0x00, 0x0C, 0x0C, 0x00, 0x00, 0x00]), // :
-    Glyph(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C, 0x00]), // .
-    Glyph(&[0x00, 0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00]), // -
-];
-
-fn glyph_index(ch: char) -> Option<usize> {
-    match ch {
-        '0'..='9' => Some((ch as usize) - ('0' as usize)),
-        ':' => Some(10),
-        '.' => Some(11),
-        '-' => Some(12),
-        _ => None,
-    }
-}
-
-/// Render one glyph into the Y plane at absolute pixel coordinates `(ox, oy)`.
-/// Pixels outside the frame are silently clipped.
-fn draw_glyph(
-    y: &mut [u8],
-    stride_y: usize,
-    glyph: &Glyph,
-    ox: u32,
-    oy: u32,
-    width: u32,
-    height: u32,
-) {
-    for row in 0..GLYPH_HEIGHT {
-        let py = oy + row;
-        if py >= height {
-            break;
-        }
-        let byte = glyph.0[row as usize];
-        for col in 0..GLYPH_WIDTH {
-            let px = ox + col;
-            if px >= width {
-                break;
-            }
-            // ponytail: bit test — GLYPH_WIDTH-1-col maps col 0 to MSB of 6-bit field
-            let bit = (byte >> (GLYPH_WIDTH - 1 - col)) & 1;
-            if bit == 1 {
-                y[py as usize * stride_y + px as usize] = 240; // white
-            }
-        }
-    }
-}
-
-/// Render a string of glyphs into the Y plane starting at `(ox, oy)`.
-/// Returns the x-offset after the last glyph drawn (for chaining).
-fn draw_text(
-    y: &mut [u8],
-    stride_y: usize,
-    text: &str,
-    ox: u32,
-    oy: u32,
-    width: u32,
-    height: u32,
-) -> u32 {
-    let mut cursor_x = ox;
-    for ch in text.chars() {
-        if let Some(gi) = glyph_index(ch) {
-            draw_glyph(y, stride_y, &GLYPHS[gi], cursor_x, oy, width, height);
-        }
-        cursor_x += GLYPH_WIDTH;
-        if cursor_x >= width {
-            break;
-        }
-    }
-    cursor_x
-}
 
 // ── FramePattern trait ──────────────────────────────────
 
@@ -134,126 +51,17 @@ pub trait FramePattern: Send + Sync {
     );
 }
 
-// ── SquarePattern ───────────────────────────────────────
 
-/// A single randomly placed, randomly colored square.
-struct Square {
-    x: u32,
-    y: u32,
-    size: u32,
-    y_val: u8,
-    u_val: u8,
-    v_val: u8,
+// ── PatternMode ─────────────────────────────────────────
+
+/// Which pattern to generate. Used by [`VideoFrameGenerator::start`].
+pub enum PatternMode {
+    /// Colored squares with configurable count, size, color strategy, and motion.
+    Squares(SquaresConfig),
+    /// SMPTE 75% color bars plus grayscale gradient.
+    SmpteBars,
 }
 
-/// Generates a pattern of random colored squares plus a bitmap-font timestamp
-/// overlay in the top-left corner.
-#[allow(dead_code)]
-pub struct SquarePattern {
-    squares: Vec<Square>,
-    width: u32,
-    height: u32,
-    counter: u64,
-}
-
-impl SquarePattern {
-    /// Create a new pattern with `num_squares` randomly placed squares.
-    ///
-    /// Each square has a random position, size (8–63), and YUV color.
-    pub fn new(width: u32, height: u32, num_squares: u32) -> Self {
-        let mut rng = rand::rngs::StdRng::from_entropy();
-        let mut squares = Vec::with_capacity(num_squares as usize);
-        for _ in 0..num_squares {
-            let size = rng.gen_range(8u32..64);
-            // ponytail: keep squares fully within frame
-            let max_x = width.saturating_sub(size);
-            let max_y = height.saturating_sub(size);
-            let x = if max_x > 0 { rng.gen_range(0..max_x) } else { 0 };
-            let y = if max_y > 0 { rng.gen_range(0..max_y) } else { 0 };
-            squares.push(Square {
-                x,
-                y,
-                size,
-                y_val: rng.gen_range(60u8..200),
-                u_val: rng.gen_range(80u8..176),
-                v_val: rng.gen_range(80u8..176),
-            });
-        }
-        Self {
-            squares,
-            width,
-            height,
-            counter: 0,
-        }
-    }
-}
-
-impl FramePattern for SquarePattern {
-    fn draw(
-        &mut self,
-        y: &mut [u8],
-        u: &mut [u8],
-        v: &mut [u8],
-        stride_y: usize,
-        stride_u: usize,
-        stride_v: usize,
-        width: u32,
-        height: u32,
-    ) {
-        // 1. Background fill
-        y.fill(16);  // dark gray
-        u.fill(128); // gray chroma = no color bias
-        v.fill(128);
-
-        // 2. Draw colored squares
-        let half_w = width / 2;
-        let half_h = height / 2;
-
-        for sq in &self.squares {
-            let sx = sq.x;
-            let sy = sq.y;
-            let sz = sq.size;
-            let end_x = (sx + sz).min(width);
-            let end_y = (sy + sz).min(height);
-
-            // ponytail: nearest-neighbor fill — simple nested loops
-            for row in sy..end_y {
-                let y_off = row as usize * stride_y;
-                for col in sx..end_x {
-                    y[y_off + col as usize] = sq.y_val;
-                }
-            }
-
-            // UV planes are subsampled 2:1 both dimensions
-            let ux = (sx / 2).min(half_w.saturating_sub(1));
-            let uy = (sy / 2).min(half_h.saturating_sub(1));
-            let u_end_x = ((end_x / 2).min(half_w)).max(ux + 1);
-            let u_end_y = ((end_y / 2).min(half_h)).max(uy + 1);
-
-            for row in uy..u_end_y {
-                let u_off = row as usize * stride_u;
-                let v_off = row as usize * stride_v;
-                for col in ux..u_end_x {
-                    u[u_off + col as usize] = sq.u_val;
-                    v[v_off + col as usize] = sq.v_val;
-                }
-            }
-        }
-
-        // 3. Timestamp overlay — render counter as text at top-left
-        self.counter += 1;
-        let text = format!("{:05}", self.counter % 100_000);
-        draw_text(
-            y,
-            stride_y,
-            &text,
-            4,  // left margin
-            4,  // top margin
-            width,
-            height,
-        );
-    }
-}
 
 // ── VideoFrameGenerator ─────────────────────────────────
 
@@ -286,19 +94,27 @@ impl VideoFrameGenerator {
         }
     }
 
-    /// Start the generation thread.
+    /// Start the generation thread with a pattern mode and optional overlay.
     ///
     /// Spawns a new OS thread that:
     /// 1. Creates an [`I420Buffer`] each iteration.
     /// 2. Calls `pattern.draw()` to fill it.
-    /// 3. Wraps the buffer in a [`BoxVideoFrame`] with a monotonic timestamp.
-    /// 4. Broadcasts the frame to all active sinks.
-    /// 5. Sleeps for the frame interval, with drift compensation.
+    /// 3. Applies the [`TimestampOverlay`] if provided.
+    /// 4. Wraps the buffer in a [`BoxVideoFrame`] with a monotonic timestamp.
+    /// 5. Broadcasts the frame to all active sinks.
+    /// 6. Sleeps for the frame interval, with drift compensation.
     ///
     /// # Panics
     ///
     /// Panics if the generator is already running (check via `is_running()` first).
-    pub fn start(&self, fps: u32, mut pattern: Box<dyn FramePattern>, width: u32, height: u32) {
+    pub fn start(
+        &self,
+        fps: u32,
+        mode: PatternMode,
+        overlay: Option<TimestampOverlay>,
+        width: u32,
+        height: u32,
+    ) {
         let mut guard = self.thread.lock().unwrap();
         if guard.is_some() || self.running.load(Ordering::Relaxed) {
             drop(guard);
@@ -308,6 +124,12 @@ impl VideoFrameGenerator {
         let sinks = Arc::clone(&self.sinks);
         let running = Arc::clone(&self.running);
         self.running.store(true, Ordering::SeqCst);
+
+        // Create the pattern from the mode
+        let mut pattern: Box<dyn FramePattern> = match mode {
+            PatternMode::Squares(config) => Box::new(SquaresPattern::with_config(width, height, config)),
+            PatternMode::SmpteBars => Box::new(SmpteBarsPattern::new()),
+        };
 
         let handle = thread::Builder::new()
             .name("omsp-video-gen".into())
@@ -331,6 +153,22 @@ impl VideoFrameGenerator {
                         bw,
                         bh,
                     );
+
+                    // Apply timestamp overlay if provided
+                    if let Some(ref ovl) = overlay {
+                        ovl.burn_i420(
+                            &mut buf.data_y,
+                            &mut buf.data_u,
+                            &mut buf.data_v,
+                            buf.stride_y as usize,
+                            buf.stride_u as usize,
+                            buf.stride_v as usize,
+                            timestamp_us(),
+                            frame_id,
+                            bw,
+                            bh,
+                        );
+                    }
 
                     let vb: Box<dyn VideoBuffer> = Box::new(buf);
                     let frame = VideoFrame::new(vb)
@@ -439,28 +277,6 @@ mod tests {
     use crate::base::frame::BoxVideoFrame;
     use crate::error::MediaError;
     use crate::pipeline::sink::{VideoSink, VideoSinkWants};
-
-    /// Minimal pattern that just fills planes with gray.
-    struct GrayPattern;
-
-    impl FramePattern for GrayPattern {
-        fn draw(
-            &mut self,
-            y: &mut [u8],
-            u: &mut [u8],
-            v: &mut [u8],
-            _stride_y: usize,
-            _stride_u: usize,
-            _stride_v: usize,
-            _width: u32,
-            _height: u32,
-        ) {
-            y.fill(128);
-            u.fill(128);
-            v.fill(128);
-        }
-    }
-
     /// Sink that records how many frames it received.
     struct CountingSink {
         count: Arc<Mutex<u32>>,
@@ -488,8 +304,8 @@ mod tests {
         generator.add_or_update_sink(sink, VideoSinkWants::default());
         assert_eq!(generator.sink_count(), 1);
 
-        // Start at 60 fps with a 16×16 frame
-        generator.start(60, Box::new(GrayPattern), 16, 16);
+        // Start at 60 fps with a 16×16 frame in SmpteBars mode
+        generator.start(60, PatternMode::SmpteBars, None, 16, 16);
         assert!(generator.is_running());
 
         // Wait 200ms — at 60fps we expect ~12 frames
@@ -511,8 +327,21 @@ mod tests {
     #[should_panic(expected = "already running")]
     fn generator_double_start_panics() {
         let generator = VideoFrameGenerator::new();
-        generator.start(10, Box::new(GrayPattern), 4, 4);
+        generator.start(10, PatternMode::SmpteBars, None, 4, 4);
         // Second start should panic
-        generator.start(10, Box::new(GrayPattern), 4, 4);
+        generator.start(10, PatternMode::SmpteBars, None, 4, 4);
     }
+
+    #[test]
+    fn squares_mode_creates_configured_pattern() {
+        let generator = VideoFrameGenerator::new();
+        let config = SquaresConfig {
+            count: 3,
+            ..Default::default()
+        };
+        generator.start(10, PatternMode::Squares(config), None, 32, 24);
+        assert!(generator.is_running());
+        generator.stop();
+    }
+
 }
