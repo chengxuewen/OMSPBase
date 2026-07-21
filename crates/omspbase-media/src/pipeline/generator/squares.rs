@@ -5,7 +5,7 @@ use rand::SeedableRng;
 
 use super::FramePattern;
 
-/// A single randomly placed, randomly colored square.
+/// A single randomly placed, colored square with fixed direction velocity.
 #[derive(Clone, Debug)]
 pub struct Square {
     pub x: u32,
@@ -14,6 +14,8 @@ pub struct Square {
     pub y_val: u8,
     pub u_val: u8,
     pub v_val: u8,
+    pub dx: i32,
+    pub dy: i32,
 }
 
 /// Strategy for assigning colors to squares.
@@ -38,7 +40,9 @@ pub struct SquaresConfig {
     pub count: u32,
     pub min_size: u32,
     pub max_size: u32,
-    /// 0 = static; n > 0 = max pixels moved per frame per square.
+    /// Fixed-direction velocity (pixels per frame per axis).
+    /// Bounces off edges like classic webrtc-kit/opencv test patterns.
+    /// 0 = static; n > 0 = max speed magnitude per axis.
     pub motion_speed: u32,
     pub color_strategy: ColorStrategy,
 }
@@ -119,13 +123,19 @@ impl SquaresPattern {
                 ),
             };
 
+            let dx = if config.motion_speed > 0 {
+                rng_clone.gen_range(1..=config.motion_speed) as i32
+                    * if rng_clone.gen_bool(0.5) { 1 } else { -1 }
+            } else { 0 };
+            let dy = if config.motion_speed > 0 {
+                rng_clone.gen_range(1..=config.motion_speed) as i32
+                    * if rng_clone.gen_bool(0.5) { 1 } else { -1 }
+            } else { 0 };
+
             squares.push(Square {
-                x,
-                y,
-                size,
-                y_val,
-                u_val,
-                v_val,
+                x, y, size,
+                y_val, u_val, v_val,
+                dx, dy,
             });
         }
         squares
@@ -150,18 +160,34 @@ impl FramePattern for SquaresPattern {
         u.fill(128); // gray chroma = no color bias
         v.fill(128);
 
-        // 2. Apply motion if enabled
+        // 2. Move by fixed velocity, bounce off edges
         if self.config.motion_speed > 0 {
             for sq in &mut self.squares {
-                let dx = self.rng.gen_range(0..=self.config.motion_speed) as i32
-                    * if self.rng.gen_bool(0.5) { 1 } else { -1 };
-                let dy = self.rng.gen_range(0..=self.config.motion_speed) as i32
-                    * if self.rng.gen_bool(0.5) { 1 } else { -1 };
-                // Clamp to bounds
-                let new_x = (sq.x as i32 + dx).clamp(0, (width.saturating_sub(sq.size)) as i32) as u32;
-                let new_y = (sq.y as i32 + dy).clamp(0, (height.saturating_sub(sq.size)) as i32) as u32;
-                sq.x = new_x;
-                sq.y = new_y;
+                let max_x = width.saturating_sub(sq.size) as i32;
+                let max_y = height.saturating_sub(sq.size) as i32;
+
+                let mut new_x = sq.x as i32 + sq.dx;
+                let mut new_y = sq.y as i32 + sq.dy;
+
+                // Bounce off left/right edges
+                if new_x < 0 {
+                    new_x = -new_x;
+                    sq.dx = -sq.dx;
+                } else if new_x > max_x {
+                    new_x = 2 * max_x - new_x;
+                    sq.dx = -sq.dx;
+                }
+                // Bounce off top/bottom edges
+                if new_y < 0 {
+                    new_y = -new_y;
+                    sq.dy = -sq.dy;
+                } else if new_y > max_y {
+                    new_y = 2 * max_y - new_y;
+                    sq.dy = -sq.dy;
+                }
+
+                sq.x = new_x.clamp(0, max_x) as u32;
+                sq.y = new_y.clamp(0, max_y) as u32;
             }
         }
 

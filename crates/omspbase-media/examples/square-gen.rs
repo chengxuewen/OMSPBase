@@ -74,7 +74,6 @@ fn main() {
     let config = SquaresConfig {
         count: num_squares,
         motion_speed: 3,
-        color_strategy: omspbase_media::pipeline::generator::ColorStrategy::RandomPerFrame,
         ..Default::default()
     };
     generator.start(fps, PatternMode::Squares(config), Some(overlay), width, height);

@@ -131,8 +131,6 @@ impl eframe::App for App {
                     let config = SquaresConfig {
                         count: 50,
                         motion_speed: 3,
-                        color_strategy:
-                            omspbase_media::pipeline::generator::ColorStrategy::RandomPerFrame,
                         ..Default::default()
                     };
                     self.generator.start(
