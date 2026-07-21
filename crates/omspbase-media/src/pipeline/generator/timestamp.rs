@@ -7,7 +7,7 @@ use super::fonts::TextBurner;
 /// Format for the timestamp overlay text.
 #[derive(Clone, Copy, Debug)]
 pub enum TimestampFormat {
-    /// YYYY-MM-DD HH:MM:SS (wall clock from µs timestamp).
+        /// YYYY-MM-DD HH:MM:SS.mmm (wall clock from µs timestamp).
     DateTime,
     /// Frame counter: zero-padded 6 digits.
     FrameCount,
@@ -112,7 +112,7 @@ impl TimestampOverlay {
         let secs = ts_us / 1_000_000;
         let nsecs = ((ts_us % 1_000_000) * 1000) as u32;
         match Utc.timestamp_opt(secs, nsecs) {
-            LocalResult::Single(dt) => dt.format("%Y-%m-%d %H:%M:%S").to_string(),
+            LocalResult::Single(dt) => dt.format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
             _ => String::from("invalid ts"),
         }
     }
@@ -138,7 +138,7 @@ mod tests {
         let ts = 1_753_099_200_000_000i64; // µs
         let text = overlay.format_text(ts, 0);
         assert!(text.starts_with("2025-07-21"));
-        assert!(text.contains("12:00:00"));
+        assert!(text.contains("12:00:00.000"));
     }
 
     #[test]
