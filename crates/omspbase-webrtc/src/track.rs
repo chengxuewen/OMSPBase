@@ -111,6 +111,14 @@ impl TrackSender {
     pub async fn write_frame(&self, data: &[u8]) -> Result<(), RtcError> {
         self.backend.write_frame(data, self.kind, self.audio_config.as_ref()).await
     }
+
+    /// Write a raw I420 (YUV 4:2:0 planar) frame to the video track.
+    /// The backend handles encoding. Delegates to the active backend.
+    ///
+    /// `data` layout: Y plane (w*h) + U plane (w*h/4) + V plane (w*h/4).
+    pub async fn write_raw_i420(&self, data: &[u8], width: u32, height: u32) -> Result<(), RtcError> {
+        self.backend.write_raw_i420(data, width, height).await
+    }
 }
 
 /// Unified handle for multi-track registry (D148).

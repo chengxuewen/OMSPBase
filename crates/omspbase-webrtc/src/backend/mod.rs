@@ -65,6 +65,17 @@ pub(crate) trait TrackWriteBackend: Send + Sync + 'static {
         kind: TrackKind,
         audio_config: Option<&AudioTrackConfig>,
     ) -> Result<(), RtcError>;
+
+    /// Write a raw I420 (YUV 4:2:0 planar) frame to the video track.
+    /// The backend handles encoding (webrtc-sys) or no-ops (stub).
+    ///
+    /// `data` layout: Y plane (w*h) + U plane (w*h/4) + V plane (w*h/4).
+    async fn write_raw_i420(
+        &self, _data: &[u8], _width: u32, _height: u32,
+    ) -> Result<(), RtcError> {
+        // Default: no-op for backends that don't support raw I420
+        Ok(())
+    }
 }
 
 // ── Mutual exclusion guard ──
