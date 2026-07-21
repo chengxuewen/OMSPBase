@@ -6,10 +6,10 @@
 //! Backend types:
 //! - WebrtcSysPc: wraps webrtc_sys::peer_connection::ffi::PeerConnection
 //! - WebrtcSysDc: wraps webrtc_sys::data_channel::ffi::DataChannel
-//! - WebrtcSysTrack: stub (track writing needs video_frame module — deferred)
+//! - WebrtcSysTrack: real video track via VideoTrackSource (webrtc-sys)
 //! - WebrtcSysFactory: wraps webrtc_sys::peer_connection_factory::ffi::PeerConnectionFactory
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::DcBackend;
 use super::PcBackend;
@@ -394,10 +394,44 @@ impl DcBackend for WebrtcSysDc {
     }
 }
 
-// ── WebrtcSysTrack (stub) ──
+// ── WebrtcSysTrack ──
 
-#[derive(Debug, Default, Clone)]
-pub(crate) struct WebrtcSysTrack;
+
+/// webrtc-sys video track backend.
+/// Holds a libwebrtc VideoTrackSource for pushing raw I420 frames.
+/// libwebrtc handles encoding internally (VP8/H.264).
+pub(crate) struct WebrtcSysTrack {
+    video_source: Mutex<Option<SharedPtr<webrtc_sys::video_track::ffi::VideoTrackSource>>>,
+}
+
+impl Default for WebrtcSysTrack {
+    fn default() -> Self {
+        Self { video_source: Mutex::new(None) }
+    }
+}
+
+impl std::fmt::Debug for WebrtcSysTrack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebrtcSysTrack")
+            .field("video_source", &self.video_source.lock().unwrap().is_some())
+            .finish()
+    }
+}
+
+impl Clone for WebrtcSysTrack {
+    fn clone(&self) -> Self {
+        let source = self.video_source.lock().unwrap().clone();
+        Self { video_source: Mutex::new(source) }
+    }
+}
+
+impl WebrtcSysTrack {
+    pub(crate) fn with_video_source(
+        source: SharedPtr<webrtc_sys::video_track::ffi::VideoTrackSource>,
+    ) -> Self {
+        Self { video_source: Mutex::new(Some(source)) }
+    }
+}
 
 impl TrackWriteBackend for WebrtcSysTrack {
     async fn write_frame(
@@ -407,13 +441,77 @@ impl TrackWriteBackend for WebrtcSysTrack {
         _audio_config: Option<&AudioTrackConfig>,
     ) -> Result<(), RtcError> {
         tracing::debug!(
-            "TrackSender::write_frame (webrtc-sys stub): {} bytes",
+            "TrackSender::write_frame (webrtc-sys): {} bytes (encoded pass-through)",
             data.len()
         );
+        // ponytail: encoded frame passthrough — stub for now, real encoding deferred
+        Ok(())
+    }
+
+    async fn write_raw_i420(
+        &self, data: &[u8], width: u32, height: u32,
+    ) -> Result<(), RtcError> {
+        use webrtc_sys::video_frame::ffi as vf;
+        use webrtc_sys::video_frame_buffer::ffi as vfb;
+        use webrtc_sys::video_track::ffi as vt;
+
+        let source = self.video_source.lock().unwrap()
+            .clone()
+            .ok_or_else(|| RtcError::Track("video source not initialized".into()))?;
+
+        let w: i32 = width as i32;
+        let h: i32 = height as i32;
+        // I420 layout: Y plane (W×H) + U plane (W/2×H/2) + V plane (W/2×H/2)
+        let y_size = (w * h) as usize;
+        let uv_size = ((w / 2) * (h / 2)) as usize;
+        if data.len() < y_size + 2 * uv_size {
+            return Err(RtcError::Track("I420 data too short".into()));
+        }
+
+        let i420 = vfb::new_i420_buffer(w, h, w, w / 2, w / 2);
+
+        // SAFETY: I420Buffer owns the memory; slices live within the call scope.
+        // The frame builder consumes the buffer via set_video_frame_buffer before build().
+        unsafe {
+            let y_slice = std::slice::from_raw_parts_mut(
+                i420.data_y() as *mut u8, y_size,
+            );
+            let u_slice = std::slice::from_raw_parts_mut(
+                i420.data_u() as *mut u8, uv_size,
+            );
+            let v_slice = std::slice::from_raw_parts_mut(
+                i420.data_v() as *mut u8, uv_size,
+            );
+            y_slice.copy_from_slice(&data[..y_size]);
+            u_slice.copy_from_slice(&data[y_size..y_size + uv_size]);
+            v_slice.copy_from_slice(&data[y_size + uv_size..y_size + 2 * uv_size]);
+        }
+
+        // Build VideoFrame and push to source
+        let mut builder = vf::new_video_frame_builder();
+        builder.pin_mut().set_timestamp_us(0);
+        builder.pin_mut().set_video_frame_buffer(
+            // SAFETY: yuv_to_vfb upcasts PlanarYuvBuffer → VideoFrameBuffer
+            unsafe { &*vfb::yuv_to_vfb(
+                vfb::i420_to_yuv8(&i420)
+            ) },
+        );
+        let frame = builder.pin_mut().build();
+
+        let metadata = vt::FrameMetadata {
+            has_packet_trailer: false,
+            user_timestamp: 0,
+            frame_id: 0,
+            user_data: vec![],
+        };
+
+        source.on_captured_frame(&frame, &metadata);
         Ok(())
     }
 }
 
+// ponytail: WebrtcSysTrack has interior Mutex for VideoTrackSource;
+// C++ side handles actual thread safety for on_captured_frame.
 // ── No-op PeerConnectionObserver ──
 
 /// No-op observer. We don't need to react to observer callbacks in the
@@ -568,5 +666,27 @@ impl WebrtcSysFactory {
             .map_err(|e| RtcError::PeerConnection(e.what().to_owned()))?;
 
         Ok(WebrtcSysPc { pc })
+    }
+
+    /// Create a video track with a new VideoTrackSource.
+    /// Returns (WebrtcSysTrack, SharedPtr<MediaStreamTrack>) —
+    /// the media track can be added to the PeerConnection via add_track.
+    pub(crate) fn create_video_track(
+        &self,
+    ) -> (
+        WebrtcSysTrack,
+        cxx::SharedPtr<webrtc_sys::media_stream_track::ffi::MediaStreamTrack>,
+    ) {
+        use webrtc_sys::video_track::ffi as vt;
+
+        let resolution = vt::VideoResolution { width: 640, height: 480 };
+        let source = vt::new_video_track_source(&resolution, false);
+        let backend = WebrtcSysTrack::with_video_source(source.clone());
+
+        // Create VideoTrack from factory, then convert to MediaStreamTrack
+        let video_track = self.factory.create_video_track("video".into(), source);
+        let media_track = vt::video_to_media(video_track);
+
+        (backend, media_track)
     }
 }
