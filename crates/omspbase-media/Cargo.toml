@@ -9,6 +9,7 @@ license.workspace = true
 thiserror = "2"
 tracing = "0.1"
 rand = "0.8"
+yuv-sys = { version = "0.3", optional = true }
 
 [dev-dependencies]
 eframe = "0.30"
@@ -17,7 +18,7 @@ image = "0.25"
 
 [features]
 default = ["backend-libyuv-sys"]
-backend-libyuv-sys = []
+backend-libyuv-sys = ["dep:yuv-sys"]
 backend-native = []
 
 [package.metadata.docs.rs]

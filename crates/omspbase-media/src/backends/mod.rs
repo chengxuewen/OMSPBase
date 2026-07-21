@@ -1,3 +1,6 @@
+#[cfg(all(feature = "backend-libyuv-sys", feature = "backend-native"))]
+compile_error!("Only one backend can be enabled at a time.");
+
 #[cfg(feature = "backend-libyuv-sys")]
 mod libyuv;
 #[cfg(feature = "backend-libyuv-sys")]

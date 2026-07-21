@@ -3,133 +3,13 @@ use crate::base::rotation::VideoRotation;
 use crate::error::MediaError;
 use crate::pixel_format::PixelFormat;
 use crate::transform::VideoTransform;
-
-// ── libyuv FFI declarations ──────────────────────────────
-// SAFETY: we declare the canonical libyuv C ABI. All pointers are
-// properly typed: const for read-only planes, mut for write-only planes.
-// The caller guarantees each plane buffer is at least stride × height bytes.
-
-unsafe extern "C" {
-    fn I420Scale(
-        src_y: *const u8,
-        src_stride_y: i32,
-        src_u: *const u8,
-        src_stride_u: i32,
-        src_v: *const u8,
-        src_stride_v: i32,
-        src_w: i32,
-        src_h: i32,
-        dst_y: *mut u8,
-        dst_stride_y: i32,
-        dst_u: *mut u8,
-        dst_stride_u: i32,
-        dst_v: *mut u8,
-        dst_stride_v: i32,
-        dst_w: i32,
-        dst_h: i32,
-        filter_mode: i32,
-    ) -> i32;
-
-    fn I420Mirror(
-        src_y: *const u8,
-        src_stride_y: i32,
-        src_u: *const u8,
-        src_stride_u: i32,
-        src_v: *const u8,
-        src_stride_v: i32,
-        dst_y: *mut u8,
-        dst_stride_y: i32,
-        dst_u: *mut u8,
-        dst_stride_u: i32,
-        dst_v: *mut u8,
-        dst_stride_v: i32,
-        w: i32,
-        h: i32,
-    ) -> i32;
-
-    fn I420Rotate(
-        src_y: *const u8,
-        src_stride_y: i32,
-        src_u: *const u8,
-        src_stride_u: i32,
-        src_v: *const u8,
-        src_stride_v: i32,
-        dst_y: *mut u8,
-        dst_stride_y: i32,
-        dst_u: *mut u8,
-        dst_stride_u: i32,
-        dst_v: *mut u8,
-        dst_stride_v: i32,
-        src_w: i32,
-        src_h: i32,
-        rotation: i32,
-    ) -> i32;
-
-    // Color space conversion
-    fn ARGBToI420(
-        src_argb: *const u8,
-        src_stride_argb: i32,
-        dst_y: *mut u8,
-        dst_stride_y: i32,
-        dst_u: *mut u8,
-        dst_stride_u: i32,
-        dst_v: *mut u8,
-        dst_stride_v: i32,
-        w: i32,
-        h: i32,
-    ) -> i32;
-
-    // ponytail: libyuv's I420ToARGB writes BGRA byte order in memory
-    // (A,R,G,B per pixel = BGRA as a 32-bit LE word). If fmt ≠ BGRA,
-    // the caller should swizzle after this call.
-    fn I420ToARGB(
-        src_y: *const u8,
-        src_stride_y: i32,
-        src_u: *const u8,
-        src_stride_u: i32,
-        src_v: *const u8,
-        src_stride_v: i32,
-        dst_argb: *mut u8,
-        dst_stride_argb: i32,
-        w: i32,
-        h: i32,
-    ) -> i32;
-
-    fn I420ToNV12(
-        src_y: *const u8,
-        src_stride_y: i32,
-        src_u: *const u8,
-        src_stride_u: i32,
-        src_v: *const u8,
-        src_stride_v: i32,
-        dst_y: *mut u8,
-        dst_stride_y: i32,
-        dst_uv: *mut u8,
-        dst_stride_uv: i32,
-        w: i32,
-        h: i32,
-    ) -> i32;
-
-    fn NV12ToI420(
-        src_y: *const u8,
-        src_stride_y: i32,
-        src_uv: *const u8,
-        src_stride_uv: i32,
-        dst_y: *mut u8,
-        dst_stride_y: i32,
-        dst_u: *mut u8,
-        dst_stride_u: i32,
-        dst_v: *mut u8,
-        dst_stride_v: i32,
-        w: i32,
-        h: i32,
-    ) -> i32;
-}
+// libyuv C bindings provided by livekit's yuv-sys crate (builds from source).
+use yuv_sys::*;
 
 // ── Constants ────────────────────────────────────────────
 
 /// libyuv filter mode: no interpolation (nearest-neighbor).
-const K_FILTER_NONE: i32 = 0;
+const K_FILTER_NONE: u32 = 0;
 
 // ── LibyuvTransform ──────────────────────────────────────
 
@@ -182,7 +62,7 @@ impl VideoTransform for LibyuvTransform {
         // to dst planes. The caller owns both buffers and guarantees
         // each plane slice covers stride × height bytes.
         let r = unsafe {
-            I420Scale(
+            rs_I420Scale(
                 src.y_ptr,
                 src.stride_y as i32,
                 src.u_ptr,
@@ -213,7 +93,7 @@ impl VideoTransform for LibyuvTransform {
     ) -> Result<(), MediaError> {
         // SAFETY: same contract as scale — libyuv reads src, writes dst.
         let r = unsafe {
-            I420Mirror(
+            rs_I420Mirror(
                 src.y_ptr,
                 src.stride_y as i32,
                 src.u_ptr,
@@ -314,7 +194,7 @@ impl VideoTransform for LibyuvTransform {
         // SAFETY: libyuv reads src, writes dst. Rotation=0 is a no-op
         // but we still delegate (avoids branching at the backend level).
         let r = unsafe {
-            I420Rotate(
+            rs_I420Rotate(
                 src.y_ptr,
                 src.stride_y as i32,
                 src.u_ptr,
@@ -329,7 +209,7 @@ impl VideoTransform for LibyuvTransform {
                 dst.stride_v as i32,
                 w as i32,
                 h as i32,
-                rotation_deg(rot),
+                rotation_deg(rot) as u32,
             )
         };
         libyuv_ret(r)
@@ -343,7 +223,7 @@ impl VideoTransform for LibyuvTransform {
     ) -> Result<(), MediaError> {
         // SAFETY: ARGB src slice covers w×h×4 bytes. libyuv writes to dst planes.
         let r = unsafe {
-            ARGBToI420(
+            rs_ARGBToI420(
                 argb.as_ptr(),
                 (w * 4) as i32,
                 dst.y_ptr,
@@ -366,12 +246,12 @@ impl VideoTransform for LibyuvTransform {
         _fmt: PixelFormat,
         dst: &mut [u8],
     ) -> Result<(), MediaError> {
-        // ponytail: libyuv's I420ToARGB writes BGRA byte order in memory
+        // ponytail: libyuv's rs_I420ToARGB writes BGRA byte order in memory
         // (A=MSB, R, G, B=LSB per pixel → BGRA as LE u32). If the caller
         // requested a different format, swizzle post-call.
         // SAFETY: I420 src planes and ARGB dst buffer are caller-owned.
         let r = unsafe {
-            I420ToARGB(
+            rs_I420ToARGB(
                 src.y_ptr,
                 src.stride_y as i32,
                 src.u_ptr,
@@ -397,7 +277,7 @@ impl VideoTransform for LibyuvTransform {
         // SAFETY: libyuv reads I420 src, writes to NV12 dst_y (w×h) and
         // dst_uv (w×h/2) output buffers.
         let r = unsafe {
-            I420ToNV12(
+            rs_I420ToNV12(
                 src.y_ptr,
                 src.stride_y as i32,
                 src.u_ptr,
@@ -424,7 +304,7 @@ impl VideoTransform for LibyuvTransform {
     ) -> Result<(), MediaError> {
         // SAFETY: libyuv reads NV12 src planes, writes to I420 dst.
         let r = unsafe {
-            NV12ToI420(
+            rs_NV12ToI420(
                 src_y.as_ptr(),
                 w as i32,
                 src_uv.as_ptr(),
