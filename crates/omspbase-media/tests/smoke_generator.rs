@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use omspbase_media::base::frame::BoxVideoFrame;
 use omspbase_media::error::MediaError;
-use omspbase_media::pipeline::generator::{SquarePattern, VideoFrameGenerator};
+use omspbase_media::pipeline::generator::{PatternMode, SquaresConfig, VideoFrameGenerator};
 use omspbase_media::pipeline::sink::{VideoSink, VideoSinkWants};
 use omspbase_media::pipeline::source::VideoSource;
 
@@ -45,7 +45,11 @@ fn generator_produces_colored_frames() {
     };
 
     generator.add_or_update_sink(Box::new(sink), VideoSinkWants::default());
-    generator.start(FPS, Box::new(SquarePattern::new(WIDTH, HEIGHT, 5)), WIDTH, HEIGHT);
+    let config = SquaresConfig {
+        count: 5,
+        ..Default::default()
+    };
+    generator.start(FPS, PatternMode::Squares(config), None, WIDTH, HEIGHT);
 
     std::thread::sleep(Duration::from_secs(1));
     generator.stop();
@@ -60,7 +64,11 @@ fn generator_produces_colored_frames() {
 #[test]
 fn generator_double_stop_is_safe() {
     let generator = VideoFrameGenerator::new();
-    generator.start(30, Box::new(SquarePattern::new(32, 32, 2)), 32, 32);
+    let config = SquaresConfig {
+        count: 2,
+        ..Default::default()
+    };
+    generator.start(30, PatternMode::Squares(config), None, 32, 32);
     std::thread::sleep(Duration::from_millis(100));
     generator.stop();
     generator.stop(); // should not panic
@@ -70,6 +78,10 @@ fn generator_double_stop_is_safe() {
 #[should_panic(expected = "already running")]
 fn generator_double_start_panics() {
     let generator = VideoFrameGenerator::new();
-    generator.start(10, Box::new(SquarePattern::new(32, 32, 2)), 32, 32);
-    generator.start(10, Box::new(SquarePattern::new(32, 32, 2)), 32, 32);
+    let config = SquaresConfig {
+        count: 2,
+        ..Default::default()
+    };
+    generator.start(10, PatternMode::Squares(config), None, 32, 32);
+    generator.start(10, PatternMode::SmpteBars, None, 32, 32);
 }

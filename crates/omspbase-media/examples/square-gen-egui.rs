@@ -12,11 +12,11 @@ use std::sync::{Arc, Mutex};
 use eframe::egui;
 #[cfg(feature = "backend-native")]
 use omspbase_media::backends::NativeTransform;
-#[cfg(feature = "backend-libyuv-sys")]
+#[cfg(feature = "backend-yuv-sys")]
 use omspbase_media::backends::LibyuvTransform;
 use omspbase_media::base::frame::BoxVideoFrame;
 use omspbase_media::error::MediaError;
-use omspbase_media::pipeline::generator::{SquarePattern, VideoFrameGenerator};
+use omspbase_media::pipeline::generator::{PatternMode, SquaresConfig, VideoFrameGenerator};
 use omspbase_media::pipeline::sink::{VideoSink, VideoSinkWants};
 use omspbase_media::pipeline::source::VideoSource;
 use omspbase_media::pixel_format::PixelFormat;
@@ -62,11 +62,15 @@ impl VideoSink<BoxVideoFrame> for GeneratorSink {
     fn on_frame(&self, frame: &BoxVideoFrame) -> Result<VideoSinkWants, MediaError> {
         if let Some(i420_ref) = frame.buffer.as_i420_ref() {
             let mut rgba = vec![0u8; (WIDTH * HEIGHT * 4) as usize];
-            #[cfg(feature = "backend-libyuv-sys")]
+            #[cfg(feature = "backend-yuv-sys")]
             let result = LibyuvTransform::i420_to_argb(i420_ref, WIDTH, HEIGHT, PixelFormat::RGBA, &mut rgba);
-#[cfg(all(feature = "backend-native", not(feature = "backend-libyuv-sys")))]
+            #[cfg(all(feature = "backend-native", not(feature = "backend-yuv-sys")))]
             let result = NativeTransform::i420_to_argb(i420_ref, WIDTH, HEIGHT, PixelFormat::RGBA, &mut rgba);
-            result.expect("i420_to_argb failed");
+            // ponytail: log error instead of panic — keeps generator thread alive
+            if let Err(e) = result {
+                eprintln!("i420_to_argb failed: {e:?}");
+                return Ok(VideoSinkWants::default());
+            }
             self.queue.push(rgba);
         }
         Ok(VideoSinkWants::default())
@@ -106,6 +110,10 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // ponytail: unconditional request_repaint_after matches webrtc_loopback_egui pattern.
+        // Conditional inside `if self.running` misses the frame where Start is clicked.
+        ctx.request_repaint_after(std::time::Duration::from_millis(17));
+
         egui::TopBottomPanel::top("controls").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if self.running {
@@ -114,9 +122,14 @@ impl eframe::App for App {
                         self.running = false;
                     }
                 } else if ui.button("\u{25B6} Start").clicked() {
+                    let config = SquaresConfig {
+                        count: 50,
+                        ..Default::default()
+                    };
                     self.generator.start(
                         FPS,
-                        Box::new(SquarePattern::new(WIDTH, HEIGHT, 50)),
+                        PatternMode::Squares(config),
+                        None,
                         WIDTH,
                         HEIGHT,
                     );
@@ -137,12 +150,17 @@ impl eframe::App for App {
                         [WIDTH as usize, HEIGHT as usize],
                         &rgba,
                     );
-                    let tex = ctx.load_texture(
-                        "frame",
-                        color_image,
-                        egui::TextureOptions::LINEAR,
-                    );
-                    self.texture = Some(tex);
+                    // ponytail: reuse texture with set() instead of recreating each frame
+                    if let Some(tex) = self.texture.as_mut() {
+                        tex.set(color_image, egui::TextureOptions::LINEAR);
+                    } else {
+                        let tex = ctx.load_texture(
+                            "frame",
+                            color_image,
+                            egui::TextureOptions::LINEAR,
+                        );
+                        self.texture = Some(tex);
+                    }
                     self.frame_count += 1;
                 }
             }
@@ -160,10 +178,6 @@ impl eframe::App for App {
                 ui.centered_and_justified(|ui| {
                     ui.label("Press Start to begin");
                 });
-            }
-
-            if self.running {
-                ctx.request_repaint();
             }
         });
     }

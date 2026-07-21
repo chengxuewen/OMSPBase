@@ -1,6 +1,6 @@
 //! Square video frame generator — smoke test example.
 //!
-//! Creates a `VideoFrameGenerator` with a `SquarePattern`, runs for 2 seconds,
+//! Creates a `VideoFrameGenerator` with `SquaresPattern`, runs for 2 seconds,
 //! collects frame statistics via a `StatsSink`, and prints results.
 //!
 //! Usage:
@@ -12,8 +12,7 @@ use std::time::Duration;
 
 use omspbase_media::base::frame::BoxVideoFrame;
 use omspbase_media::error::MediaError;
-use omspbase_media::pipeline::generator::SquarePattern;
-use omspbase_media::pipeline::generator::VideoFrameGenerator;
+use omspbase_media::pipeline::generator::{PatternMode, SquaresConfig, VideoFrameGenerator};
 use omspbase_media::pipeline::sink::{VideoSink, VideoSinkWants};
 use omspbase_media::pipeline::source::VideoSource;
 
@@ -66,8 +65,11 @@ fn main() {
     let (sink, count, first_width, first_height) = StatsSink::new();
     generator.add_or_update_sink(Box::new(sink), VideoSinkWants::default());
 
-    let pattern = Box::new(SquarePattern::new(width, height, num_squares));
-    generator.start(fps, pattern, width, height);
+    let config = SquaresConfig {
+        count: num_squares,
+        ..Default::default()
+    };
+    generator.start(fps, PatternMode::Squares(config), None, width, height);
 
     thread::sleep(duration);
 
