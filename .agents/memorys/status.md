@@ -1,14 +1,14 @@
 # OMSPBase Status
 
-> 生成: 2026-07-20 | 决策数量: 161+ (D1-D161 + D-SFU-WORKER/D-QOS-AUDIO/D-STREAM-TOPOLOGY/D-GOP-CACHE/D-SIMULCAST + D-AUDIT-02) | Phase: 0-1 | 147 tests | WebRTC triple-backend
+> 生成: 2026-07-21 | 决策: 166+ (D1-D165) | Phase: 0-1 | 56 tests (media) | WebRTC triple-backend | Multi-mode generator
 
 ## Phase
 
-**当前**: Phase 0-1 交错。P0 (PcBackend default methods) + P1 (RTCStats/RtpParameters) 移植完成。webrtc-sys backend 创建完成。loopback 集成测试 13 tests。egui 示例可运行。
-**下一步**: Phase 0 剩余: P2 VideoTrackSource + P3 AudioTrackSource (从 webrtc-kit 移植)。Phase 1 Transport RTP 迁移 → Phase 2 mediasoup SFU。
+**当前**: Phase 0-1 交错。P0+P1 完成。omspbase-media: 56 tests, multi-mode generator (Squares/SmpteBars) with timestamp overlay + bouncing box motion.
+**下一步**: P2 VideoTrackSource + P3 AudioTrackSource (从 webrtc-kit 移植)。Phase 1 Transport RTP → Phase 2 mediasoup。
 **Phase 2 方向**: mediasoup SFU + webrtc-sys 默认后端 + Component 框架精简版 + Admin Dashboard SPA。
 **MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(8+ modules, triple-backend)。
-**测试**: 147 workspace tests。WebRTC crate 34 tests (w3c-api 21 + loopback 13)。全部 3 后端编译通过。stub 34 pass, webrtc-rs 34 pass, webrtc-sys compiles clean。
+**测试**: 147 workspace tests。omspbase-media: 56 tests (37 lib + 19 integration)。
 **架构文档**: 25 篇模块文档 + 7 篇 SDD。审计 26 项 (doc-audit 2026-07-19) + 33 项 (doc-audit 2026-07-20) 已应用。
 
 ## 决策状态
@@ -23,7 +23,11 @@
 | D160 | loopback 测试: tests/common/loopback.rs + tests/webrtc_loopback.rs (13 tests) | ✅ | 0 |
 | D161 | egui 示例: examples/webrtc_loopback_egui.rs (eframe GUI 视频预览) | ✅ | 0 |
 
-|
+| D162 | Multi-mode VideoFrameGenerator: PatternMode (Squares/SmpteBars) + TimestampOverlay (DateTime/FrameCount/Combined + ms) + SquaresConfig (count/size/motion/ColorStrategy) + TextBurner + BitmapFont scaling | ✅ | 0 |
+| D163 | Bouncing box motion: fixed-direction velocity with edge bounce (webrtc-kit/opencv style) | ✅ | 0 |
+| D164 | Timestamp milliseconds: %.3f format for screenshot comparison | ✅ | 0 |
+| D165 | Generator background: Y=128 medium gray (match test source) | ✅ | 0 |
+
 | D125 | PipelineEngine hot-plug 边界测试: 6→11 tests | ✅ | 1 |
 
 | D1 | 控制面+数据面分离 | ✅ | 0 |
