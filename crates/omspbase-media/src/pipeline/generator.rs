@@ -120,6 +120,7 @@ pub trait FramePattern: Send + Sync {
     /// `y`, `u`, `v` are mutable slices into the respective planes.
     /// `stride_*` gives the row stride (bytes per row) for each plane.
     /// `width` and `height` are the logical frame dimensions.
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         y: &mut [u8],
@@ -165,8 +166,8 @@ impl SquarePattern {
         for _ in 0..num_squares {
             let size = rng.gen_range(8u32..64);
             // ponytail: keep squares fully within frame
-            let max_x = if width > size { width - size } else { 0 };
-            let max_y = if height > size { height - size } else { 0 };
+            let max_x = width.saturating_sub(size);
+            let max_y = height.saturating_sub(size);
             let x = if max_x > 0 { rng.gen_range(0..max_x) } else { 0 };
             let y = if max_y > 0 { rng.gen_range(0..max_y) } else { 0 };
             squares.push(Square {
@@ -262,6 +263,7 @@ impl FramePattern for SquarePattern {
 /// which is then wrapped in a [`BoxVideoFrame`] and broadcast to all
 /// registered sinks.
 pub struct VideoFrameGenerator {
+    #[allow(clippy::type_complexity)]
     sinks: Arc<Mutex<Vec<(SinkId, Box<dyn VideoSink<BoxVideoFrame>>, VideoSinkWants)>>>,
     running: Arc<AtomicBool>,
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -367,12 +369,12 @@ impl VideoFrameGenerator {
     /// Stop the generation thread and wait for it to exit.
     pub fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
-        if let Ok(mut guard) = self.thread.lock() {
-            if let Some(handle) = guard.take() {
-                drop(guard);
-                // ponytail: join outside the lock to avoid potential deadlock
-                let _ = handle.join();
-            }
+        if let Ok(mut guard) = self.thread.lock()
+            && let Some(handle) = guard.take()
+        {
+            drop(guard);
+            // ponytail: join outside the lock to avoid potential deadlock
+            let _ = handle.join();
         }
     }
 
