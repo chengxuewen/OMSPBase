@@ -146,7 +146,7 @@ impl FramePattern for SquaresPattern {
         height: u32,
     ) {
         // 1. Background fill
-        y.fill(16); // dark gray
+        y.fill(128); // medium gray
         u.fill(128); // gray chroma = no color bias
         v.fill(128);
 
