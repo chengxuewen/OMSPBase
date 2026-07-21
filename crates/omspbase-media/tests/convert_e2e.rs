@@ -1,3 +1,5 @@
+#![cfg(feature = "backend-native")]
+
 use omspbase_media::backends::NativeTransform;
 use omspbase_media::base::buffer::{I420Buffer, VideoBuffer};
 use omspbase_media::pixel_format::PixelFormat;

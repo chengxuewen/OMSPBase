@@ -1,3 +1,5 @@
+#![cfg(feature = "backend-native")]
+
 mod common;
 
 use omspbase_media::backends::NativeTransform;
