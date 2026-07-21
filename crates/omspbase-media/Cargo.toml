@@ -8,8 +8,10 @@ license.workspace = true
 [dependencies]
 thiserror = "2"
 tracing = "0.1"
+chrono = { version = "0.4", features = ["clock"] }
 rand = "0.8"
 yuv-sys = { version = "0.3", optional = true }
+omspbase-core = { path = "../omspbase-core" }
 
 [dev-dependencies]
 eframe = "0.30"
@@ -17,17 +19,17 @@ egui = "0.30"
 image = "0.25"
 
 [features]
-default = ["backend-libyuv-sys"]
-backend-libyuv-sys = ["dep:yuv-sys"]
+default = ["backend-yuv-sys"]
+backend-yuv-sys = ["dep:yuv-sys"]
 backend-native = []
 
 [package.metadata.docs.rs]
-features = ["backend-libyuv-sys"]
+features = ["backend-yuv-sys"]
 
 [[example]]
 name = "viewer"
-required-features = ["backend-native"]
+required-features = ["backend-yuv-sys"]
 
 [[example]]
 name = "square-gen-egui"
-required-features = ["backend-native"]
+required-features = ["backend-yuv-sys"]

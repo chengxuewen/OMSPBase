@@ -3759,9 +3759,11 @@ dependencies = [
 name = "omspbase-media"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "eframe",
  "egui",
  "image",
+ "omspbase-core",
  "rand 0.8.7",
  "thiserror 2.0.18",
  "tracing",
