@@ -16,7 +16,10 @@ use omspbase_media::backends::NativeTransform;
 use omspbase_media::backends::LibyuvTransform;
 use omspbase_media::base::frame::BoxVideoFrame;
 use omspbase_media::error::MediaError;
-use omspbase_media::pipeline::generator::{PatternMode, SquaresConfig, VideoFrameGenerator};
+use omspbase_media::pipeline::generator::{
+    Anchor, BitmapFont, PatternMode, SquaresConfig, TextBurner, TimestampFormat,
+    TimestampOverlay, VideoFrameGenerator,
+};
 use omspbase_media::pipeline::sink::{VideoSink, VideoSinkWants};
 use omspbase_media::pipeline::source::VideoSource;
 use omspbase_media::pixel_format::PixelFormat;
@@ -122,14 +125,20 @@ impl eframe::App for App {
                         self.running = false;
                     }
                 } else if ui.button("\u{25B6} Start").clicked() {
+                    let font = BitmapFont::new();
+                    let burner = TextBurner::new(font, false, Anchor::TopLeft);
+                    let overlay = TimestampOverlay::new(burner, TimestampFormat::Combined);
                     let config = SquaresConfig {
                         count: 50,
+                        motion_speed: 3,
+                        color_strategy:
+                            omspbase_media::pipeline::generator::ColorStrategy::RandomPerFrame,
                         ..Default::default()
                     };
                     self.generator.start(
                         FPS,
                         PatternMode::Squares(config),
-                        None,
+                        Some(overlay),
                         WIDTH,
                         HEIGHT,
                     );
