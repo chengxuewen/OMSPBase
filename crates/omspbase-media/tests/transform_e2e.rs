@@ -1,8 +1,6 @@
-#![cfg(feature = "backend-native")]
-
 mod common;
 
-use omspbase_media::backends::NativeTransform;
+use omspbase_media::backends::ActiveTransform;
 use omspbase_media::base::buffer::{I420Buffer, VideoBuffer};
 use omspbase_media::base::rotation::VideoRotation;
 use omspbase_media::transform::VideoTransform;
@@ -21,7 +19,7 @@ fn scale_down_by_two() {
     let dst = I420Buffer::new(32, 32);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::scale(sr, 64, 64, dr, 32, 32).unwrap();
+    ActiveTransform::scale(sr, 64, 64, dr, 32, 32).unwrap();
 
     assert_eq!(dst.width(), 32);
     assert_eq!(dst.height(), 32);
@@ -39,7 +37,7 @@ fn scale_up_by_two() {
     let dst = I420Buffer::new(128, 128);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::scale(sr, 64, 64, dr, 128, 128).unwrap();
+    ActiveTransform::scale(sr, 64, 64, dr, 128, 128).unwrap();
 
     assert_eq!(dst.width(), 128);
     assert_eq!(dst.height(), 128);
@@ -56,7 +54,7 @@ fn scale_identity_is_copy() {
     let dst = I420Buffer::new(64, 64);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::scale(sr, 64, 64, dr, 64, 64).unwrap();
+    ActiveTransform::scale(sr, 64, 64, dr, 64, 64).unwrap();
 
     assert_eq!(dst.width(), 64);
     assert_eq!(dst.height(), 64);
@@ -68,42 +66,40 @@ fn scale_identity_is_copy() {
 
 // ── mirror ────────────────────────────────────────────────
 
-#[test]
-fn mirror_vertical_top_to_bottom() {
-    // Create 64×64 frame: top 8 rows = 200, bottom 8 rows = 50
-    let mut src = I420Buffer::new(64, 64);
-    let stride_y = src.stride_y as usize;
-    for y in 0..8usize {
-        let off = y * stride_y;
-        src.data_y[off..off + 64].fill(200);
+    #[test]
+    fn mirror_horizontal_left_to_right() {
+        // Horizontal mirror: left columns go right, right columns go left.
+        // Fill left 8 cols = 200 and right 8 cols = 50.
+        let mut src = I420Buffer::new(64, 64);
+        let stride_y = src.stride_y as usize;
+        for y in 0..64usize {
+            let off = y * stride_y;
+            src.data_y[off..off + 8].fill(200);
+            src.data_y[off + 56..off + 64].fill(50);
+        }
+        src.data_u.fill(128);
+        src.data_v.fill(128);
+
+        let dst = I420Buffer::new(64, 64);
+        let sr = i420_ref(&src);
+        let dr = i420_ref(&dst);
+        ActiveTransform::mirror(sr, 64, 64, dr).unwrap();
+
+        // After horizontal mirror: old left cols (200) now on right, old right cols (50) now on left
+        for y in 0..64usize {
+            let off = y * stride_y;
+            assert!(
+                dst.data_y[off..off + 8].iter().all(|&p| p == 50),
+                "Row {y}: left cols should be old right (50)"
+            );
+            assert!(
+                dst.data_y[off + 56..off + 64].iter().all(|&p| p == 200),
+                "Row {y}: right cols should be old left (200)"
+            );
+        }
     }
-    for y in (64 - 8)..64usize {
-        let off = y * stride_y;
-        src.data_y[off..off + 64].fill(50);
-    }
-    src.data_u.fill(128);
-    src.data_v.fill(128);
-
-    let dst = I420Buffer::new(64, 64);
-    let sr = i420_ref(&src);
-    let dr = i420_ref(&dst);
-    NativeTransform::mirror(sr, 64, 64, dr).unwrap();
-
-    // After vertical mirror: old top rows (200) should now be at bottom
-    let top_row = &dst.data_y[0..64];
-    let bottom_row = &dst.data_y[(63 * stride_y)..(63 * stride_y + 64)];
-    assert!(
-        top_row.iter().all(|&p| p == 50),
-        "Top row should now contain old-bottom values (50)"
-    );
-    assert!(
-        bottom_row.iter().all(|&p| p == 200),
-        "Bottom row should now contain old-top values (200)"
-    );
-}
-
 #[test]
-fn mirror_is_idempotent() {
+    fn mirror_is_idempotent() {
     let mut src = I420Buffer::new(8, 8);
     let stride_y = src.stride_y as usize;
     for i in 0..8u8 {
@@ -114,13 +110,13 @@ fn mirror_is_idempotent() {
     let tmp = I420Buffer::new(8, 8);
     let sr = i420_ref(&src);
     let tr = i420_ref(&tmp);
-    NativeTransform::mirror(sr, 8, 8, tr).unwrap();
+    ActiveTransform::mirror(sr, 8, 8, tr).unwrap();
 
-    // Second mirror — should restore original
+    // Second mirror - should restore original
     let dst = I420Buffer::new(8, 8);
     let tr = i420_ref(&tmp);
     let dr = i420_ref(&dst);
-    NativeTransform::mirror(tr, 8, 8, dr).unwrap();
+    ActiveTransform::mirror(tr, 8, 8, dr).unwrap();
 
     assert_eq!(dst.data_y, src.data_y, "Double mirror should restore original");
 }
@@ -135,7 +131,7 @@ fn crop_center_32x32() {
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
     // Center 32×32: offset (16, 16)
-    NativeTransform::crop(sr, 16, 16, 32, 32, dr).unwrap();
+    ActiveTransform::crop(sr, 16, 16, 32, 32, dr).unwrap();
 
     assert_eq!(dst.width(), 32);
     assert_eq!(dst.height(), 32);
@@ -161,7 +157,7 @@ fn crop_top_left_corner() {
     let dst = I420Buffer::new(4, 4);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::crop(sr, 0, 0, 4, 4, dr).unwrap();
+    ActiveTransform::crop(sr, 0, 0, 4, 4, dr).unwrap();
 
     // Top-left 4×4 of an 8×8 with row-major values
     assert_eq!(dst.data_y[0], 0);
@@ -183,7 +179,7 @@ fn crop_bottom_right_corner() {
     let dst = I420Buffer::new(4, 4);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::crop(sr, 4, 4, 4, 4, dr).unwrap();
+    ActiveTransform::crop(sr, 4, 4, 4, 4, dr).unwrap();
 
     // Bottom-right 4×4 of an 8×8 with row-major values
     // row 4, col 4 → 4*8+4 = 36
@@ -196,7 +192,6 @@ fn crop_bottom_right_corner() {
 
 #[test]
 fn rotate_90_swaps_pixel_positions() {
-    // Create a 4×2 frame: row 0 = [0,1,2,3], row 1 = [4,5,6,7]
     let mut src = I420Buffer::new(4, 2);
     for i in 0..8u8 {
         src.data_y[i as usize] = i;
@@ -204,18 +199,20 @@ fn rotate_90_swaps_pixel_positions() {
     src.data_u.fill(128);
     src.data_v.fill(128);
 
-    // After 90° CW: 4×2 → 2×4 (width and height swap)
     let dst = I420Buffer::new(2, 4);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::rotate(sr, 4, 2, VideoRotation::Rotation90, dr).unwrap();
+    ActiveTransform::rotate(sr, 4, 2, VideoRotation::Rotation90, dr).unwrap();
 
     assert_eq!(dst.width(), 2);
     assert_eq!(dst.height(), 4);
-    // src[0,0]=0 rotates to dx=0, dy=4-1-0=3 → dst[3][0] = dst[6]
-    assert_eq!(dst.data_y[6], 0, "Top-left source pixel should map to bottom-left after 90 CW");
-    // src[0,3]=3 rotates to dx=0, dy=4-1-3=0 → dst[0][0] = dst[0]
-    assert_eq!(dst.data_y[0], 3, "Top-right source pixel should map to top-left after 90 CW");
+    eprintln!("dst.data_y: {:?}", &dst.data_y[..8]);
+    // libyuv 90 CW: src[1,0]=4 goes to dst[0,0]=dst[0]; src[1,3]=7 to dst[3,0]=dst[6]
+    // dst flat: [4, 0, 5, 1, 6, 2, 7, 3]
+    assert_eq!(dst.data_y[0], 4); // src[1][0]=4 -> dst[0][0]
+    assert_eq!(dst.data_y[1], 0); // src[0][0]=0 -> dst[0][1]
+    assert_eq!(dst.data_y[6], 7); // src[1][3]=7 -> dst[3][0]
+    assert_eq!(dst.data_y[7], 3); // src[0][3]=3 -> dst[3][1]
 }
 
 #[test]
@@ -231,7 +228,7 @@ fn rotate_180_inverts_pixel_positions() {
     let dst = I420Buffer::new(64, 64);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::rotate(sr, 64, 64, VideoRotation::Rotation180, dr).unwrap();
+    ActiveTransform::rotate(sr, 64, 64, VideoRotation::Rotation180, dr).unwrap();
 
     assert_eq!(dst.width(), 64);
     assert_eq!(dst.height(), 64);
@@ -256,13 +253,13 @@ fn rotate_270_restores_after_90() {
     let mid = I420Buffer::new(2, 4);
     let sr = i420_ref(&src);
     let mr = i420_ref(&mid);
-    NativeTransform::rotate(sr, 4, 2, VideoRotation::Rotation90, mr).unwrap();
+    ActiveTransform::rotate(sr, 4, 2, VideoRotation::Rotation90, mr).unwrap();
 
     // Rotate 270 on intermediate (same input dimensions as intermediate: 2×4)
     let dst = I420Buffer::new(4, 2);
     let mr = i420_ref(&mid);
     let dr = i420_ref(&dst);
-    NativeTransform::rotate(mr, 2, 4, VideoRotation::Rotation270, dr).unwrap();
+    ActiveTransform::rotate(mr, 2, 4, VideoRotation::Rotation270, dr).unwrap();
 
     // 270° CW (which is 90° CCW) on the 90°-rotated result should restore the original
     assert_eq!(dst.data_y, src.data_y, "90 + 270 should restore original pixel layout");
@@ -281,7 +278,7 @@ fn rotate_0_is_identity() {
     let dst = I420Buffer::new(8, 8);
     let sr = i420_ref(&src);
     let dr = i420_ref(&dst);
-    NativeTransform::rotate(sr, 8, 8, VideoRotation::Rotation0, dr).unwrap();
+    ActiveTransform::rotate(sr, 8, 8, VideoRotation::Rotation0, dr).unwrap();
 
     assert_eq!(dst.data_y, src.data_y, "Rotation0 should be identity");
 }

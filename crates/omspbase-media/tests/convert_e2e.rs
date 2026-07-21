@@ -1,6 +1,4 @@
-#![cfg(feature = "backend-native")]
-
-use omspbase_media::backends::NativeTransform;
+use omspbase_media::backends::ActiveTransform;
 use omspbase_media::base::buffer::{I420Buffer, VideoBuffer};
 use omspbase_media::pixel_format::PixelFormat;
 use omspbase_media::transform::VideoTransform;
@@ -33,13 +31,13 @@ fn argb_to_i420_roundtrip_loss_within_tolerance() {
     // BGRA → I420
     let i420_buf = I420Buffer::new(w, h);
     let dst_ref = i420_ref(&i420_buf);
-    let result = NativeTransform::argb_to_i420(&argb, w, h, dst_ref);
+    let result = ActiveTransform::argb_to_i420(&argb, w, h, dst_ref);
     assert!(result.is_ok(), "argb_to_i420 failed: {:?}", result.err());
 
     // I420 → BGRA
     let mut argb_out = vec![0u8; (w * h * 4) as usize];
     let src_ref = i420_ref(&i420_buf);
-    let result = NativeTransform::i420_to_argb(src_ref, w, h, PixelFormat::BGRA, &mut argb_out);
+    let result = ActiveTransform::i420_to_argb(src_ref, w, h, PixelFormat::BGRA, &mut argb_out);
     assert!(result.is_ok(), "i420_to_argb failed: {:?}", result.err());
 
     // ponytail: verify non-zero output (content was processed through conversion)
@@ -68,13 +66,13 @@ fn i420_to_nv12_roundtrip_preserves_data() {
     let mut nv12_y = vec![0u8; (w * h) as usize];
     let mut nv12_uv = vec![0u8; (w * h / 2) as usize];
     let src_ref = i420_ref(&i420_buf);
-    let result = NativeTransform::i420_to_nv12(src_ref, w, h, &mut nv12_y, &mut nv12_uv);
+    let result = ActiveTransform::i420_to_nv12(src_ref, w, h, &mut nv12_y, &mut nv12_uv);
     assert!(result.is_ok(), "i420_to_nv12 failed: {:?}", result.err());
 
     // NV12 → I420
     let i420_out = I420Buffer::new(w, h);
     let dst_ref = i420_ref(&i420_out);
-    let result = NativeTransform::nv12_to_i420(&nv12_y, &nv12_uv, w, h, dst_ref);
+    let result = ActiveTransform::nv12_to_i420(&nv12_y, &nv12_uv, w, h, dst_ref);
     assert!(result.is_ok(), "nv12_to_i420 failed: {:?}", result.err());
 
     // ponytail: verify output dimensions and data preservation
