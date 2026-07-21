@@ -98,6 +98,7 @@ impl VideoTransform for NativeTransform {
         Ok(())
     }
 
+    /// Horizontal mirror (left-right flip) matching libyuv I420Mirror.
     fn mirror(
         src: I420BufferRef,
         w: u32,
@@ -115,20 +116,22 @@ impl VideoTransform for NativeTransform {
         let src_v = unsafe { Self::read_slice(src.v_ptr, src.v_len) };
 
         for y in 0..h {
-            let src_row = (h - 1 - y) * src.stride_y;
+            let src_row = y * src.stride_y;
             let dst_row = y * dst.stride_y;
-            dst_y[dst_row..dst_row + w].copy_from_slice(&src_y[src_row..src_row + w]);
+            for x in 0..w {
+                dst_y[dst_row + (w - 1 - x)] = src_y[src_row + x];
+            }
         }
 
         let half_w = w / 2;
         let half_h = h / 2;
         for y in 0..half_h {
-            let src_row = (half_h - 1 - y) * src.stride_u;
+            let src_row = y * src.stride_u;
             let dst_row = y * dst.stride_u;
-            dst_u[dst_row..dst_row + half_w]
-                .copy_from_slice(&src_u[src_row..src_row + half_w]);
-            dst_v[dst_row..dst_row + half_w]
-                .copy_from_slice(&src_v[src_row..src_row + half_w]);
+            for x in 0..half_w {
+                dst_u[dst_row + (half_w - 1 - x)] = src_u[src_row + x];
+                dst_v[dst_row + (half_w - 1 - x)] = src_v[src_row + x];
+            }
         }
 
         Ok(())
@@ -215,8 +218,8 @@ impl VideoTransform for NativeTransform {
             VideoRotation::Rotation90 => {
                 for sy in 0..h {
                     for sx in 0..w {
-                        let dx = sy;
-                        let dy = w - 1 - sx;
+                        let dy = sx;
+                        let dx = h - 1 - sy;
                         dst_y[dy * dst.stride_y + dx] =
                             src_y[sy * src.stride_y + sx];
                     }
@@ -225,8 +228,8 @@ impl VideoTransform for NativeTransform {
                 let half_h = h / 2;
                 for sy in 0..half_h {
                     for sx in 0..half_w {
-                        let dx = sy;
-                        let dy = half_w - 1 - sx;
+                        let dy = sx;
+                        let dx = half_h - 1 - sy;
                         dst_u[dy * dst.stride_u + dx] =
                             src_u[sy * src.stride_u + sx];
                         dst_v[dy * dst.stride_v + dx] =
@@ -259,8 +262,8 @@ impl VideoTransform for NativeTransform {
             VideoRotation::Rotation270 => {
                 for sy in 0..h {
                     for sx in 0..w {
-                        let dx = h - 1 - sy;
-                        let dy = sx;
+                        let dy = w - 1 - sx;
+                        let dx = sy;
                         dst_y[dy * dst.stride_y + dx] =
                             src_y[sy * src.stride_y + sx];
                     }
@@ -269,8 +272,8 @@ impl VideoTransform for NativeTransform {
                 let half_h = h / 2;
                 for sy in 0..half_h {
                     for sx in 0..half_w {
-                        let dx = half_h - 1 - sy;
-                        let dy = sx;
+                        let dy = half_w - 1 - sx;
+                        let dx = sy;
                         dst_u[dy * dst.stride_u + dx] =
                             src_u[sy * src.stride_u + sx];
                         dst_v[dy * dst.stride_v + dx] =
@@ -513,20 +516,24 @@ mod tests {
     // ── mirror ──────────────────────────────────────────
 
     #[test]
-    fn mirror_vertical_flip() {
+    fn mirror_horizontal_flip() {
+        // 4x4 frame with distinct column values: row 0=[0,1,2,3], row 1=[4,5,6,7], etc.
         let mut src_buf = make_i420(4, 4);
         for y in 0..4u32 {
-            let off = (y * 4) as usize;
-            src_buf.data_y[off..off + 4].fill(y as u8);
+            for x in 0..4u32 {
+                src_buf.data_y[(y * 4 + x) as usize] = (y * 4 + x) as u8;
+            }
         }
-
         let dst_buf = make_i420(4, 4);
         let src_ref = i420_ref(&src_buf);
         let dst_ref = i420_ref(&dst_buf);
 
         NativeTransform::mirror(src_ref, 4, 4, dst_ref).unwrap();
-        assert_eq!(dst_buf.data_y[0], 3);
-        assert_eq!(dst_buf.data_y[3 * 4], 0);
+        // After horizontal mirror: each row reversed
+        assert_eq!(dst_buf.data_y[0], 3); // row0 col0 = old row0 col3
+        assert_eq!(dst_buf.data_y[3], 0); // row0 col3 = old row0 col0
+        assert_eq!(dst_buf.data_y[4], 7); // row1 col0 = old row1 col3
+        assert_eq!(dst_buf.data_y[7], 4); // row1 col3 = old row1 col0
     }
 
     // ── crop ────────────────────────────────────────────
@@ -619,9 +626,10 @@ mod tests {
         let dst_ref = i420_ref(&dst_buf);
 
         NativeTransform::rotate(src_ref, 4, 2, VideoRotation::Rotation90, dst_ref).unwrap();
-        // The top-left pixel of the source (row=0,col=0) rotates to
-        // position: dx=0, dy=4-1-0=3 → dst_y[3*2 + 0] = dst_y[6]
-        assert_eq!(dst_buf.data_y[6], 0);
+        // src[0][0]=0 -> dy=sx=0, dx=h-1-sy=1 -> dst[0][1]=dst[1]
+        assert_eq!(dst_buf.data_y[1], 0);
+        // src[1][0]=4 -> dy=0, dx=0 -> dst[0][0]=dst[0]
+        assert_eq!(dst_buf.data_y[0], 4);
     }
 
     #[test]
@@ -640,11 +648,11 @@ mod tests {
         let dst_buf = make_i420(2, 4);
         let src_ref = i420_ref(&src_buf);
         let dst_ref = i420_ref(&dst_buf);
-
         NativeTransform::rotate(src_ref, 4, 2, VideoRotation::Rotation270, dst_ref).unwrap();
-        // The bottom-right pixel (row=1,col=3) value=7 rotates to
-        // position: dx=2-1-1=0, dy=3 → dst_y[3*2 + 0] = dst_y[6]
-        assert_eq!(dst_buf.data_y[6], 7);
+        // src[0][0]=0 -> dy=w-1-sx=3, dx=sy=0 -> dst[3][0]=dst[6]
+        assert_eq!(dst_buf.data_y[6], 0);
+        // src[1][3]=7 -> dy=0, dx=1 -> dst[0][1]=dst[1]
+        assert_eq!(dst_buf.data_y[1], 7);
     }
 
     // ── argb_to_i420 ────────────────────────────────────
@@ -827,7 +835,7 @@ mod tests {
     /// libyuv may not be linkable; ignored by default.
     #[test]
     #[ignore = "libyuv shared library may not be available at link time"]
-    #[cfg(all(feature = "backend-native", feature = "backend-libyuv-sys"))]
+    #[cfg(all(feature = "backend-native", feature = "backend-yuv-sys"))]
     fn native_and_libyuv_scale_match() {
         let src_buf = make_i420(16, 16);
         let dst_native = make_i420(8, 8);
@@ -848,7 +856,7 @@ mod tests {
 
     #[test]
     #[ignore = "libyuv shared library may not be available at link time"]
-    #[cfg(all(feature = "backend-native", feature = "backend-libyuv-sys"))]
+    #[cfg(all(feature = "backend-native", feature = "backend-yuv-sys"))]
     fn native_and_libyuv_i420_nv12_roundtrip_match() {
         let mut src_buf = make_i420(8, 8);
         for i in 0..64u8 {

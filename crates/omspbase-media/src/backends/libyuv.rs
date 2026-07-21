@@ -285,9 +285,9 @@ impl VideoTransform for LibyuvTransform {
                 src.v_ptr,
                 src.stride_v as i32,
                 dst_y.as_mut_ptr(),
-                src.stride_y as i32,
+                w as i32,
                 dst_uv.as_mut_ptr(),
-                src.stride_u as i32,
+                w as i32,
                 w as i32,
                 h as i32,
             )
