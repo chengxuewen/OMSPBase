@@ -1,3 +1,11 @@
+#![cfg(feature = "backend-native")]
+
+// omspbase-media viewer — VideoFrame transform demo with egui (grid + single view)
+// Usage: cargo run -p omspbase-media --example viewer --features backend-native
+
+// Note: all code between here and fn main requires backend-native.
+// The empty-crate pattern is intentional — cargo needs a main fn.
+
 // omspbase-media viewer — VideoFrame transform demo with egui (grid + single view)
 // Usage: cargo run -p omspbase-media --example viewer --features backend-native
 

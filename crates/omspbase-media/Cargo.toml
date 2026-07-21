@@ -22,3 +22,11 @@ backend-native = []
 
 [package.metadata.docs.rs]
 features = ["backend-libyuv-sys"]
+
+[[example]]
+name = "viewer"
+required-features = ["backend-native"]
+
+[[example]]
+name = "square-gen-egui"
+required-features = ["backend-native"]
