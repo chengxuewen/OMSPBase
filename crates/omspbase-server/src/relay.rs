@@ -99,6 +99,7 @@ mod imp {
         }
 
         /// ponytail: stub bridge_tracks; requires webrtc feature for real PeerConnection access.
+        /// Roadmap: integrate VideoFrameGenerator as test video source (see .sisyphus/plans/gen-webrtc-integration/design.md)
         pub async fn bridge_tracks(
             &self,
             _host_pc: &(),
