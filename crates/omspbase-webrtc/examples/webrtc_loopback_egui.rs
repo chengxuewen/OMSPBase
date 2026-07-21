@@ -6,10 +6,10 @@
 //!
 //! Run with:
 //! ```bash
-//! cargo run -p omspbase-webrtc --example webrtc_loopback_egui --no-default-features
+//! cargo run -p omspbase-webrtc --example webrtc_loopback_egui
 //! ```
 //!
-//! ponytail: stub backend only for now — real backend requires native webrtc-sys build.
+//! Use stub backend (no native libwebrtc): `--no-default-features`
 
 use eframe::egui;
 use egui::ColorImage;
