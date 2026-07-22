@@ -205,7 +205,13 @@ impl PcBackend for WebrtcRsPc {
     async fn close(&self) {
         let _ = self.inner.close().await;
     }
-}
+
+    /// Override: store on_track callback (webrtc-rs bridge deferred to Phase 2).
+    fn set_on_track(&self, cb: Box<dyn Fn(crate::track::TrackReceiver) + Send + Sync + 'static>) {
+        // ponytail: store callback for future webrtc-rs on_track bridge
+        // webrtc-rs RTCPeerConnection::on_track provides TrackRemote directly
+        let _ = cb;
+    }
 
 // ── WebrtcRsDc ──
 

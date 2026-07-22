@@ -83,14 +83,14 @@ pub trait TrackWriteBackend: Send + Sync + 'static {
     ) -> Result<(), RTCError>;
 
     /// Write a raw I420 (YUV 4:2:0 planar) frame to the video track.
-    /// The backend handles encoding (webrtc-sys) or no-ops (stub).
+    /// The backend handles encoding (webrtc-sys built-in x264) or no-ops (stub, webrtc-rs).
+    /// For webrtc-rs: use omspbase-codec crate to encode I420→H.264, then write_frame().
     ///
     /// `data` layout: Y plane (w*h) + U plane (w*h/4) + V plane (w*h/4).
     async fn write_raw_i420(
         &self, _data: &[u8], _width: u32, _height: u32,
     ) -> Result<(), RTCError> {
-        // Default: no-op for backends that don't support raw I420
-        Ok(())
+        // Default: no-op for backends without built-in encoding (stub, webrtc-rs)
     }
 }
 
