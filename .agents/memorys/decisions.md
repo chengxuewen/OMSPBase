@@ -439,6 +439,9 @@
 
 **决策**: Phase 1 编码后端全部走 GStreamer（nvh264enc / vah264enc / vtenc_h264）
 **日期**: 2026-07-16
+
+**修订 (2026-07-22)**: omspbase-codec 计划支持 FFmpeg 静态链接作为 Host 编码备选（backend-ffmpeg feature）。GStreamer 保留为默认（开发/桌面），FFmpeg 用于 edge embed 静态分发。详见 docs/modules/18-codec-crate.md。
+
 **原因**:
 - 单一 dxgiscreencapsrc → nvh264enc → appsink pipeline，零组装成本
 - FFmpeg 软件 fallback 留给 Phase 2

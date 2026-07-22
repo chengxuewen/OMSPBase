@@ -79,8 +79,8 @@ pub trait VideoDecoder: Send {
 
 | 后端 | Feature | 链接 | 场景 |
 |------|---------|------|------|
-| GStreamer | `backend-gstreamer` | 动态 .so | Host 编码默认 / Remote 解码 |
-| FFmpeg | `backend-ffmpeg` | 静态 .a | Host 编码备选 / Remote 解码默认（edge embed） |
+| GStreamer | `backend-gstreamer` | 动态 .so | Host 编码默认 |
+| FFmpeg | `backend-ffmpeg` | 静态 .a | Remote 解码（str0m 后端，D72）；Host 编码备选（D43 修订） |
 | Stub | 无 feature | 无 | 开发/测试/编译检查 |
 
 Host 端双后端可切换：
@@ -192,8 +192,45 @@ crates/omspbase-codec/
 └── benches/
     └── encode_bench.rs
 ```
+## API 边界与类型映射
 
-## 测试覆盖 (69 tests)
+codec crate 不依赖 omspbase-media，通过 &[u8] 交换数据（C5）。
+
+| codec 类型 | media/webrtc 类型 | 转换方向 |
+|-----------|-------------------|---------|
+| codec::VideoFrame | media::VideoFrame<I420Buffer> | media→codec: 展平 I420Buffer plane |
+| codec::EncodedPacket | webrtc::TrackSender::write_frame(&[u8]) | codec→webrtc: 编码包字节 → 传输 |
+| codec::EncodedPacket | webrtc::TrackReceiver (原始字节) | webrtc→codec: 接收编码字节 → 解码器 |
+
+**注**: webrtc crate 当前未暴露原始编码包接收 API（Phase 2 预留）。
+
+## 错误处理
+
+CodecError (thiserror)，关键变体：
+
+| 变体 | 说明 |
+|------|------|
+| InvalidConfig(String) | 无效编码器配置 |
+| UnsupportedCodec | 后端不支持该编解码器 |
+| NoBackend(CodecId) | 无后端编译（缺少 feature flag） |
+| Encoder(String) | 编码运行时错误 |
+| Decoder(String) | 解码运行时错误 |
+| InvalidState(String) | 非法状态转换 |
+| ResourceExhausted(String) | 内部队列满 |
+| InvalidInput(String) | 输入数据格式不匹配 |
+
+## 跨平台
+
+| 后端 | macOS x64 | macOS ARM | Linux x64 | Linux ARM | Windows |
+|------|:---:|:---:|:---:|:---:|:---:|
+| GStreamer | brew | brew | apt | apt | MSYS2 |
+| FFmpeg 静态 | 预构建 | 预构建 | 预构建 | 交叉编译 | vcpkg |
+| FFmpeg 动态 | brew | brew | apt | apt | vcpkg |
+
+详见 docs/reference/ffmpeg-static-build-strategy.md。
+
+
+## 测试覆盖 (69 tests, 规划中)
 
 | 类 | 测试数 | 说明 |
 |-----|--------|------|
@@ -231,3 +268,11 @@ crates/omspbase-codec/
 - [FFmpeg 静态构建策略](../reference/ffmpeg-static-build-strategy.md) — 构建方案
 - [SDD 验收标准](../sdd/omspbase-codec-acceptance-criteria.md) — 具体阈值
 - [E2E 验收矩阵](../../.sisyphus/plans/omspbase-codec/e2e-acceptance-matrix.md) — 端到端场景
+
+## 交叉引用
+
+以下文档链接回本文档：
+- [17. WebRTC Crate](17-webrtc-crate.md) — Phase 2 预留 write_frame / on_encoded_packet API
+- [SDD 验收标准](../sdd/omspbase-codec-acceptance-criteria.md) — 对齐 push-pull trait API
+- [FFmpeg 静态构建策略](../reference/ffmpeg-static-build-strategy.md) — 预构建 + CI 集成
+- [E2E 验收矩阵](../../.sisyphus/plans/omspbase-codec/e2e-acceptance-matrix.md) — 8 场景测试矩阵
