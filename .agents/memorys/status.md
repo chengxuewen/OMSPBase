@@ -1,8 +1,8 @@
 # OMSPBase Status
 
-> 生成: 2026-07-22 | 决策: 170+ (D1-D173) | Phase: 0-1 | 54 tests (media) | RealObserver + FrameSink + VideoSink 完成 | RTC 重命名 | core→media
+> 生成: 2026-07-22 | 决策: 170+ (D1-D173) | Phase: 0-1 | 137 workspace tests | omspbase-codec crate (54 tests, PSNR 100dB) | webrtc 83 tests | FFmpeg backend
 
-## Phase
+**当前**: 7 crate workspace。omspbase-codec Phase 0-1 完成 (stub+FFmpeg双后端, 54 tests, PSNR 100.0 dB roundtrip)。RTC 重命名 + PeerConnectionApi trait + RealObserver/FrameSink 接收端。
 
 **当前**: Phase 0-1 交错。接收端完成: RealObserver (替换 NoOpObserver), FrameSink trait, VideoSink bridge (I420 提取)。RTC 前缀重命名完成。core→media 迁移完成。
 **下一步**: 接收端集成测试 + webrtc_loopback_egui 验证。

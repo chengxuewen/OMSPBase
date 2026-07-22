@@ -2838,3 +2838,20 @@ Ref: systemd (Restart=on-failure), Kubernetes (restartPolicy)。推荐度: ⭐�
 
 webrtc_loopback_egui.rs 更新为 FrameSink + mpsc channel 模式。编译通过。
 **关联**: D148, D158
+
+---
+
+## D174: omspbase-codec 创建 + Phase 0-1 完成
+
+**状态**: ✅
+**日期**: 2026-07-22
+
+**决策**: 按 D82 规划 (#5 crate) 创建 omspbase-codec。14 源文件，双后端架构 (stub + FFmpeg)。
+- Phase 0: crate 骨架 (Cargo.toml + 14 源文件 + stub backend)
+- Phase 1: 32 unit tests (config/lifecycle/stub)
+- FFmpeg 后端: ffmpeg-the-third 真实编解码, build.rs C-probe
+- Roundtrip: I420→H.264→I420, stride-aware PSNR 100.0 dB
+- ffmpeg-the-third 替代 ffmpeg-next（活跃维护, safer API）
+
+测试矩阵: stub 24 pass, ffmpeg 30 pass, 总计 54 tests。
+**关联**: D43, D71, D82, C5
