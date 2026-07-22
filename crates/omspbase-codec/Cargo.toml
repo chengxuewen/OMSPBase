@@ -21,3 +21,6 @@ gstreamer-app = { version = "0.23", optional = true }
 default = []
 backend-ffmpeg = ["dep:ffmpeg-the-third"]
 backend-gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
+
+[build-dependencies]
+pkg-config = "0.3"
