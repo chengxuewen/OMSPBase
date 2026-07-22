@@ -47,7 +47,7 @@ mod imp {
             enc.set_width(config.format.width);
             enc.set_height(config.format.height);
             enc.set_format(ffmpeg::format::Pixel::YUV420P);
-            enc.set_time_base(ffmpeg::Rational(1, 90000));
+            enc.set_time_base(ffmpeg::Rational(1, 30));
             enc.set_gop(config.gop);
             enc.set_max_b_frames(0);
             self.encoder = Some(enc.open_with(x264_opts(config))
@@ -79,12 +79,10 @@ mod imp {
                         self.stats.packets_produced += 1;
                         let data = pkt.data().unwrap_or(&[]).to_vec();
                         self.stats.bytes_encoded += data.len() as u64;
-                        if !data.is_empty() {
-                            self.packets.push(EncodedPacket {
-                                data, pts: frame.pts, dts: frame.pts,
-                                keyframe: pkt.is_key(), codec: CodecId::H264,
-                            });
-                        }
+                        self.packets.push(EncodedPacket {
+                            data, pts: frame.pts, dts: frame.pts,
+                            keyframe: pkt.is_key(), codec: CodecId::H264,
+                        });
                     }
                     Err(_) => break,
                 }
