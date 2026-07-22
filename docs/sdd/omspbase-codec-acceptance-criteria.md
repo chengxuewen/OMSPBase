@@ -29,8 +29,8 @@ This document defines **concrete pass/fail acceptance criteria** for each spec a
 **Test method:**
 ```
 1. Generate synthetic I420 test frame (color bars, gradient ramp, 1px checkerboard)
-2. encode(frame) → H.264 bitstream
-3. decode(bitstream) → I420 frame
+2. encoder.push_frame(frame) → encoder.pull_packet() → H.264 bitstream
+3. decoder.push_packet(bitstream) → decoder.pull_frame() → I420 frame
 4. Compute PSNR-Y, PSNR-U, PSNR-V between source and decoded
 Pass: ALL channels ≥ threshold for 100 consecutive frames
 ```
@@ -337,18 +337,26 @@ Pass: 100-frame output stream verified by FFmpeg h264_parse tool with emulation 
 ### 9.1 Encoder Trait
 
 ```rust
-pub trait VideoEncoder: Send + Sync {
-    /// Configure the encoder. Called once before first encode().
+pub trait VideoEncoder: Send {
+    /// Configure the encoder. Called once before first push_frame().
     fn configure(&mut self, config: &EncodeConfig) -> Result<(), CodecError>;
 
-    /// Encode a single I420 frame into H.264 bitstream.
-    /// The output is an Annex‑B NAL unit stream (start-code delimited).
-    fn encode(&self, frame: &I420BufferRef) -> Result<Vec<u8>, CodecError>;
+    /// Push a raw I420 frame into the encoder.
+    /// Follow with pull_packet() calls until None.
+    fn push_frame(&mut self, frame: &I420BufferRef) -> Result<(), CodecError>;
 
-    /// Force a keyframe on the next encode() call.
-    fn request_keyframe(&self) -> Result<(), CodecError>;
+    /// Pull the next encoded packet (Annex-B H.264 NAL unit).
+    /// Returns None when encoder needs more input (call push_frame again).
+    fn pull_packet(&mut self) -> Result<Option<Vec<u8>>, CodecError>;
 
-    /// Reset the encoder with new configuration.
+    /// Signal end-of-stream. Flushes all buffered packets.
+    /// After flush(), call pull_packet() in a loop until None.
+    fn flush(&mut self) -> Result<(), CodecError>;
+
+    /// Force a keyframe on the next push_frame() call.
+    fn request_keyframe(&mut self) -> Result<(), CodecError>;
+
+    /// Reset the encoder state without reallocation.
     /// Next encoded frame MUST be an IDR.
     fn reset(&mut self, config: &EncodeConfig) -> Result<(), CodecError>;
 
@@ -356,15 +364,15 @@ pub trait VideoEncoder: Send + Sync {
     fn stats(&self) -> EncodeStats;
 }
 
-pub struct EncodeStats {
-    pub frames_encoded: u64,
-    pub keyframes_encoded: u64,
-    pub current_fps: f64,
-    pub current_bitrate_kbps: u32,
-    pub encode_latency_ms_p50: f64,
-    pub encode_latency_ms_p95: f64,
+// Convenience wrapper for single-frame encode (non-realtime use).
+pub fn encode_simple(encoder: &mut dyn VideoEncoder, frame: &I420BufferRef) -> Result<Vec<u8>, CodecError> {
+    encoder.push_frame(frame)?;
+    let mut packets = vec![];
+    while let Some(pkt) = encoder.pull_packet()? { packets.push(pkt); }
+    encoder.flush()?;
+    while let Some(pkt) = encoder.pull_packet()? { packets.push(pkt); }
+    Ok(packets.concat())
 }
-```
 
 ### 9.2 Decoder Trait
 
@@ -373,12 +381,16 @@ pub trait VideoDecoder: Send {
     /// Configure the decoder.
     fn configure(&mut self, config: &DecodeConfig) -> Result<(), CodecError>;
 
-    /// Decode H.264 bitstream → I420 frame.
-    /// Returns None if decoder needs more data (buffered).
-    fn decode(&mut self, data: &[u8]) -> Result<Option<I420Frame>, CodecError>;
+    /// Push an encoded H.264 bitstream fragment into the decoder.
+    /// Follow with pull_frame() calls until None.
+    fn push_packet(&mut self, data: &[u8]) -> Result<(), CodecError>;
 
-    /// Flush decoder, return any buffered frames.
-    fn flush(&mut self) -> Result<Vec<I420Frame>, CodecError>;
+    /// Pull the next decoded I420 frame.
+    /// Returns None when decoder needs more input (call push_packet again).
+    fn pull_frame(&mut self) -> Result<Option<I420Frame>, CodecError>;
+
+    /// Flush decoder. Call pull_frame() in a loop after flush.
+    fn flush(&mut self) -> Result<(), CodecError>;
 
     /// Reset decoder state.
     fn reset(&mut self) -> Result<(), CodecError>;
