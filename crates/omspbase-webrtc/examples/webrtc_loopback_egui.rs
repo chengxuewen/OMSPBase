@@ -192,14 +192,24 @@ fn run_p2p(p: Arc<Pipeline>) {
         pc_sender.add_track("loopback-video", TrackKind::Video)
             .expect("add track");
 
-        // onTrack callback — fires when remote track arrives after SDP negotiation
+        // on_track callback — fires when remote track arrives after SDP negotiation
         let log_status = p.clone();
-        pc_receiver.on_track(move |_receiver| {
-            *log_status.status.lock().unwrap() = "Receiver: remote track connected!".into();
-        });
+        let (frame_tx, frame_rx) = std::sync::mpsc::channel::<(Vec<u8>, u32, u32)>();
 
-        // Subscribe to decoded frames from the receiver's VideoSink
-        let frame_rx = pc_receiver.backend.subscribe_frames();
+        pc_receiver.on_track(move |receiver| {
+            *log_status.status.lock().unwrap() = "Receiver: remote track connected!".into();
+
+            // Register a FrameSink that sends decoded I420 frames via channel
+            struct ChannelSink {
+                tx: std::sync::mpsc::Sender<(Vec<u8>, u32, u32)>,
+            }
+            impl omspbase_webrtc::track::FrameSink for ChannelSink {
+                fn on_frame(&self, data: &[u8], width: u32, height: u32) {
+                    self.tx.send((data.to_vec(), width, height)).ok();
+                }
+            }
+            receiver.set_frame_sink(Box::new(ChannelSink { tx: frame_tx.clone() }));
+        });
 
         // SDP exchange
         *p.status.lock().unwrap() = "Exchanging SDP...".into();

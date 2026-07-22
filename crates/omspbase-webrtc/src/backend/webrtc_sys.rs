@@ -21,7 +21,7 @@ use crate::peer::{
     RTCOfferOptions, RTCConfiguration, RTCPeerConnectionState, RTCSignalingState,
 };
 use crate::sdp::{RTCSdpType, RTCSessionDescription};
-use crate::track::{RTCAudioTrackConfig, TrackKind};
+use crate::track::{RTCAudioTrackConfig, TrackKind, TrackReceiver};
 use crate::RTCError;
 
 // ── WebrtcSysPc ──
@@ -29,6 +29,7 @@ use crate::RTCError;
 #[derive(Clone)]
 pub(crate) struct WebrtcSysPc {
     pc: cxx::SharedPtr<webrtc_sys::peer_connection::ffi::PeerConnection>,
+    callbacks: Arc<ObserverCallbacks>,
 }
 
 impl std::fmt::Debug for WebrtcSysPc {
@@ -302,6 +303,11 @@ impl PcBackend for WebrtcSysPc {
     async fn close(&self) {
         self.pc.close();
     }
+    /// Override: store the on_track callback so RealObserver can invoke it.
+    fn set_on_track(&self, cb: Box<dyn Fn(TrackReceiver) + Send + Sync + 'static>) {
+        *self.callbacks.on_track.lock().unwrap() = Some(cb);
+    }
+
 }
 
 // ── create_data_channel (method on WebrtcSysPc, called directly by peer.rs) ──
@@ -514,93 +520,119 @@ impl TrackWriteBackend for WebrtcSysTrack {
 
 // ponytail: WebrtcSysTrack has interior Mutex for VideoTrackSource;
 // C++ side handles actual thread safety for on_captured_frame.
-// ── No-op PeerConnectionObserver ──
 
-/// No-op observer. We don't need to react to observer callbacks in the
-/// webrtc-sys backend — state queries are polled directly on the PC.
-struct NoOpObserver;
+// ── RealObserver ──
 
-impl webrtc_sys::peer_connection_factory::PeerConnectionObserver for NoOpObserver {
-    fn on_signaling_change(&self, _new_state: webrtc_sys::peer_connection::ffi::SignalingState) {}
-    fn on_add_stream(
-        &self,
-        _stream: cxx::SharedPtr<webrtc_sys::media_stream::ffi::MediaStream>,
-    ) {
-    }
-    fn on_remove_stream(
-        &self,
-        _stream: cxx::SharedPtr<webrtc_sys::media_stream::ffi::MediaStream>,
-    ) {
-    }
-    fn on_data_channel(
-        &self,
-        _data_channel: cxx::SharedPtr<webrtc_sys::data_channel::ffi::DataChannel>,
-    ) {
-    }
+/// Holds user-registered callbacks and active video sinks.
+pub(crate) struct ObserverCallbacks {
+    pub on_track: Mutex<Option<Box<dyn Fn(TrackReceiver) + Send + Sync + 'static>>>,
+    /// Retain NativeVideoSink references to prevent GC
+    pub video_sinks: Mutex<Vec<cxx::SharedPtr<webrtc_sys::video_track::ffi::NativeVideoSink>>>,
+}
+
+/// Real observer that forwards libwebrtc events to Rust callbacks.
+struct RealObserver {
+    callbacks: Arc<ObserverCallbacks>,
+}
+
+impl webrtc_sys::peer_connection_factory::PeerConnectionObserver for RealObserver {
+    fn on_signaling_change(&self, _: webrtc_sys::peer_connection::ffi::SignalingState) {}
+    fn on_add_stream(&self, _: cxx::SharedPtr<webrtc_sys::media_stream::ffi::MediaStream>) {}
+    fn on_remove_stream(&self, _: cxx::SharedPtr<webrtc_sys::media_stream::ffi::MediaStream>) {}
+    fn on_data_channel(&self, _: cxx::SharedPtr<webrtc_sys::data_channel::ffi::DataChannel>) {}
     fn on_renegotiation_needed(&self) {}
-    fn on_negotiation_needed_event(&self, _event: u32) {}
-    fn on_ice_connection_change(
-        &self,
-        _new_state: webrtc_sys::peer_connection::ffi::IceConnectionState,
-    ) {
-    }
-    fn on_standardized_ice_connection_change(
-        &self,
-        _new_state: webrtc_sys::peer_connection::ffi::IceConnectionState,
-    ) {
-    }
-    fn on_connection_change(
-        &self,
-        _new_state: webrtc_sys::peer_connection::ffi::PeerConnectionState,
-    ) {
-    }
-    fn on_ice_gathering_change(
-        &self,
-        _new_state: webrtc_sys::peer_connection::ffi::IceGatheringState,
-    ) {
-    }
-    fn on_ice_candidate(
-        &self,
-        _candidate: cxx::SharedPtr<webrtc_sys::jsep::ffi::IceCandidate>,
-    ) {
-    }
-    fn on_ice_candidate_error(
-        &self,
-        _address: String,
-        _port: i32,
-        _url: String,
-        _error_code: i32,
-        _error_text: String,
-    ) {
-    }
-    fn on_ice_candidates_removed(
-        &self,
-        _removed: Vec<cxx::SharedPtr<webrtc_sys::candidate::ffi::Candidate>>,
-    ) {
-    }
-    fn on_ice_connection_receiving_change(&self, _receiving: bool) {}
-    fn on_ice_selected_candidate_pair_changed(
-        &self,
-        _event: webrtc_sys::peer_connection_factory::ffi::CandidatePairChangeEvent,
-    ) {
-    }
+    fn on_negotiation_needed_event(&self, _: u32) {}
+    fn on_ice_connection_change(&self, _: webrtc_sys::peer_connection::ffi::IceConnectionState) {}
+    fn on_standardized_ice_connection_change(&self, _: webrtc_sys::peer_connection::ffi::IceConnectionState) {}
+    fn on_connection_change(&self, _: webrtc_sys::peer_connection::ffi::PeerConnectionState) {}
+    fn on_ice_gathering_change(&self, _: webrtc_sys::peer_connection::ffi::IceGatheringState) {}
+    fn on_ice_candidate(&self, _: cxx::SharedPtr<webrtc_sys::jsep::ffi::IceCandidate>) {}
+    fn on_ice_candidate_error(&self, _: String, _: i32, _: String, _: i32, _: String) {}
+    fn on_ice_candidates_removed(&self, _: Vec<cxx::SharedPtr<webrtc_sys::candidate::ffi::Candidate>>) {}
+    fn on_ice_connection_receiving_change(&self, _: bool) {}
+    fn on_ice_selected_candidate_pair_changed(&self, _: webrtc_sys::peer_connection_factory::ffi::CandidatePairChangeEvent) {}
+    fn on_remove_track(&self, _: cxx::SharedPtr<webrtc_sys::rtp_receiver::ffi::RtpReceiver>) {}
+    fn on_interesting_usage(&self, _: i32) {}
+
     fn on_add_track(
         &self,
         _receiver: cxx::SharedPtr<webrtc_sys::rtp_receiver::ffi::RtpReceiver>,
         _streams: Vec<cxx::SharedPtr<webrtc_sys::media_stream::ffi::MediaStream>>,
     ) {
+        // ponytail: on_add_track falls through to on_track for unified handling
     }
+
     fn on_track(
         &self,
-        _transceiver: cxx::SharedPtr<webrtc_sys::rtp_transceiver::ffi::RtpTransceiver>,
+        transceiver: cxx::SharedPtr<webrtc_sys::rtp_transceiver::ffi::RtpTransceiver>,
     ) {
+        use webrtc_sys::video_frame::ffi as vff;
+        use webrtc_sys::video_frame_buffer::ffi as vfb;
+
+        let receiver = transceiver.receiver();
+        let track = receiver.track();
+        let kind = match receiver.media_type() {
+            webrtc_sys::webrtc::ffi::MediaType::Video => TrackKind::Video,
+            _ => TrackKind::Audio,
+        };
+        let tr = TrackReceiver::new(track.id(), kind);
+
+        // Invoke user callback
+        if let Some(ref cb) = *self.callbacks.on_track.lock().unwrap() {
+            cb(tr.clone());
+        }
+
+        // If the user registered a FrameSink, create native VideoSink bridge
+        if kind == TrackKind::Video {
+            let sink_arc = tr.sink.clone();
+            if let Some(_) = *sink_arc.lock().unwrap() {
+                let callbacks = self.callbacks.clone();
+                #[allow(dead_code)]
+                struct VideoSinkAdapter {
+                    sink: std::sync::Arc<std::sync::Mutex<Option<Box<dyn crate::track::FrameSink>>>>,
+                }
+                impl webrtc_sys::video_track::VideoSink for VideoSinkAdapter {
+                    fn on_frame(&self, frame: cxx::UniquePtr<vff::VideoFrame>) {
+                        if let Some(ref sink) = *self.sink.lock().unwrap() {
+                            let w = frame.width();
+                            let h = frame.height();
+                            let buf = unsafe { frame.video_frame_buffer() };
+                            let i420 = unsafe { (*buf).to_i420() };
+                            let yuv = unsafe { vfb::i420_to_yuv8(&*i420) };
+                            let y_size = (w * h) as usize;
+                            let uv_size = ((w / 2) * (h / 2)) as usize;
+                            let mut data = vec![0u8; y_size + 2 * uv_size];
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    (*yuv).data_y(), data.as_mut_ptr(), y_size,
+                                );
+                                std::ptr::copy_nonoverlapping(
+                                    (*yuv).data_u(), data.as_mut_ptr().add(y_size), uv_size,
+                                );
+                                std::ptr::copy_nonoverlapping(
+                                    (*yuv).data_v(), data.as_mut_ptr().add(y_size + uv_size), uv_size,
+                                );
+                            }
+                            sink.on_frame(&data, w, h);
+                        }
+                    }
+                    fn on_discarded_frame(&self) {}
+                    fn on_constraints_changed(&self, _: webrtc_sys::video_track::ffi::VideoTrackSourceConstraints) {}
+                }
+
+                let adapter = VideoSinkAdapter { sink: sink_arc.clone() };
+                let wrapper = webrtc_sys::video_track::VideoSinkWrapper::new(std::sync::Arc::new(adapter));
+
+                // Register sink with the video track
+                unsafe {
+                    let video_track = webrtc_sys::video_track::ffi::media_to_video(track);
+                    let native_sink = webrtc_sys::video_track::ffi::new_native_video_sink(Box::new(wrapper));
+                    video_track.add_sink(&native_sink);
+                    callbacks.video_sinks.lock().unwrap().push(native_sink);
+                }
+            }
+        }
     }
-    fn on_remove_track(
-        &self,
-        _receiver: cxx::SharedPtr<webrtc_sys::rtp_receiver::ffi::RtpReceiver>,
-    ) {
-    }
-    fn on_interesting_usage(&self, _usage_pattern: i32) {}
 }
 
 // ── WebrtcSysFactory ──
@@ -657,9 +689,13 @@ impl WebrtcSysFactory {
             ice_transport_type,
         };
 
-        // ponytail: minimal no-op PeerConnectionObserver
+        // Create RealObserver with shared callback state
+        let callbacks = Arc::new(ObserverCallbacks {
+            on_track: Mutex::new(None),
+            video_sinks: Mutex::new(Vec::new()),
+        });
         let observer = webrtc_sys::peer_connection_factory::PeerConnectionObserverWrapper::new(
-            Arc::new(NoOpObserver),
+            Arc::new(RealObserver { callbacks: callbacks.clone() }),
         );
 
         let pc = self
@@ -667,7 +703,7 @@ impl WebrtcSysFactory {
             .create_peer_connection(rtc_config, Box::new(observer))
             .map_err(|e| RTCError::RTCPeerConnection(e.what().to_owned()))?;
 
-        Ok(WebrtcSysPc { pc })
+        Ok(WebrtcSysPc { pc, callbacks })
     }
 
     /// Create a video track with a new VideoTrackSource.

@@ -55,16 +55,44 @@ impl TrackKind {
 
 /// Receiver-side video/audio track.
 /// Receives frames from a remote RTCPeerConnection via on_track callback.
-#[derive(Debug, Clone)]
 pub struct TrackReceiver {
     pub id: String,
     pub kind: TrackKind,
+    pub(crate) sink: std::sync::Arc<std::sync::Mutex<Option<Box<dyn FrameSink>>>>,
+}
+
+impl Clone for TrackReceiver {
+    fn clone(&self) -> Self {
+        Self { id: self.id.clone(), kind: self.kind, sink: self.sink.clone() }
+    }
+}
+
+impl std::fmt::Debug for TrackReceiver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackReceiver")
+            .field("id", &self.id)
+            .field("kind", &self.kind)
+            .finish()
+    }
 }
 
 impl TrackReceiver {
     pub fn new(id: String, kind: TrackKind) -> Self {
-        Self { id, kind }
+        Self { id, kind, sink: std::sync::Arc::new(std::sync::Mutex::new(None)) }
     }
+
+    /// Register a frame sink to receive decoded I420 frames.
+    pub fn set_frame_sink(&self, sink: Box<dyn FrameSink>) {
+        *self.sink.lock().unwrap() = Some(sink);
+    }
+}
+
+/// Callback trait for receiving decoded video frames.
+/// The backend delivers raw I420 (YUV 4:2:0 planar) frames via on_frame.
+pub trait FrameSink: Send + Sync + 'static {
+    /// Called when a decoded I420 frame arrives.
+    /// data layout: Y plane (w*h) + U plane (w*h/4) + V plane (w*h/4).
+    fn on_frame(&self, data: &[u8], width: u32, height: u32);
 }
 
 /// Sender-side video/audio track.
