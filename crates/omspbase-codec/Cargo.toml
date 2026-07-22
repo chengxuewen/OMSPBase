@@ -10,8 +10,8 @@ thiserror = "2"
 tracing = "0.1"
 omspbase-core = { path = "../omspbase-core" }
 
-# FFmpeg backend (static link, Remote default)
-ffmpeg-next = { version = "7", optional = true }
+# FFmpeg backend (static link, Remote default) — ffmpeg-the-third: active fork, safer API
+ffmpeg-the-third = { version = "5", optional = true }
 
 # GStreamer backend (dynamic link, Host default)
 gstreamer = { version = "0.23", optional = true }
@@ -19,5 +19,5 @@ gstreamer-app = { version = "0.23", optional = true }
 
 [features]
 default = []
-backend-ffmpeg = ["dep:ffmpeg-next"]
+backend-ffmpeg = ["dep:ffmpeg-the-third"]
 backend-gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
