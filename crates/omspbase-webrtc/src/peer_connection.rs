@@ -1,170 +1,105 @@
-//! RTCPeerConnection thin wrapper.
-//!
-//! Delegates WebRTC operations to the backend (PcBackend trait)
-//! via compile-time type alias dispatch. Track registry and W3C
-//! API methods are backend-agnostic and handled directly.
-
+//! RTCPeerConnection — W3C WebRTC API.
 use std::collections::HashMap;
 use std::sync::Arc;
-
 use crate::backend::{ActivePc, PcBackend};
+use crate::traits::PeerConnectionApi as _;
 use crate::data_channel::{RTCDataChannel, RTCDataChannelInit};
 use crate::sdp::RTCSessionDescription;
-use crate::track::{TrackKind, TrackReceiver, TrackSender, TrackRef};
+use crate::track::{TrackKind, TrackReceiver, TrackRef, TrackSender};
+use crate::rtp::{RTCRtpSender, RTCRtpReceiver};
 use crate::RTCError;
-use crate::rtp::{RTCRtpReceiver, RTCRtpSender};
-
-// ── Connection state enums ──
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RTCPeerConnectionState { New, Connecting, Connected, Disconnected, Failed, Closed }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RTCIceConnectionState { New, Checking, Connected, Completed, Failed, Disconnected, Closed }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RTCIceGatheringState { New, Gathering, Complete }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RTCSignalingState { Stable, HaveLocalOffer, HaveLocalPrAnswer, HaveRemoteOffer, HaveRemotePrAnswer, Closed }
 
 // ── Configuration types ──
-
 #[derive(Debug, Clone)]
-pub struct RTCIceServer {
-    pub urls: Vec<String>,
-    pub username: String,
-    pub password: String,
-}
-
+pub struct RTCIceServer { pub urls: Vec<String>, pub username: String, pub password: String }
 #[derive(Debug, Clone)]
-pub struct RTCConfiguration {
-    pub ice_servers: Vec<RTCIceServer>,
-    pub ice_transport_type: RTCIceTransportPolicy,
-}
-
+pub struct RTCConfiguration { pub ice_servers: Vec<RTCIceServer>, pub ice_transport_type: RTCIceTransportPolicy }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RTCIceTransportPolicy { Relay, NoHost, All }
-
 impl Default for RTCConfiguration {
-    fn default() -> Self {
-        Self { ice_servers: vec![], ice_transport_type: RTCIceTransportPolicy::All }
-    }
+    fn default() -> Self { Self { ice_servers: vec![], ice_transport_type: RTCIceTransportPolicy::All } }
 }
-
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RTCPeerConnectionState { New, Connecting, Connected, Disconnected, Failed, Closed }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RTCIceConnectionState { New, Checking, Connected, Completed, Failed, Disconnected, Closed }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RTCIceGatheringState { New, Gathering, Complete }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RTCSignalingState { Stable, HaveLocalOffer, HaveLocalPrAnswer, HaveRemoteOffer, HaveRemotePrAnswer, Closed }
 #[derive(Debug, Clone, Default)]
-pub struct RTCOfferOptions {
-    pub ice_restart: bool,
-    pub offer_to_receive_audio: bool,
-    pub offer_to_receive_video: bool,
-}
-
+pub struct RTCOfferOptions { pub ice_restart: bool, pub offer_to_receive_audio: bool, pub offer_to_receive_video: bool }
 #[derive(Debug, Clone, Default)]
 pub struct RTCAnswerOptions;
-
 #[derive(Debug, Clone)]
-pub struct RTCIceCandidate {
-    pub candidate: String,
-    pub sdp_mid: Option<String>,
-    pub sdp_mline_index: Option<u16>,
-}
+pub struct RTCIceCandidate { pub candidate: String, pub sdp_mid: Option<String>, pub sdp_mline_index: Option<u16> }
 
-// ── RTCPeerConnection ──
+pub const MAX_TRACKS: usize = 8;
 
-/// Callback type for onTrack (D146).
+// ── RTCPeerConnection struct ──
+
 type OnTrackCallback = Arc<std::sync::Mutex<Option<Box<dyn Fn(RTCRtpReceiver) + Send + Sync>>>>;
 
 pub struct RTCPeerConnection {
-    /// Direct access to the backend (webrtc-sys/webrtc-rs/stub).
-    /// Use for backend-specific operations like accept_video_track.
     pub backend: ActivePc,
     pub(crate) tracks: Arc<std::sync::Mutex<HashMap<String, TrackRef>>>,
     pub(crate) on_track_callback: OnTrackCallback,
 }
 
-/// Maximum tracks per RTCPeerConnection (D148).
-pub const MAX_TRACKS: usize = 8;
+// ── PeerConnectionApi trait implementation ──
 
-// ── Common methods (both backends) ──
-
-impl RTCPeerConnection {
-    pub async fn create_offer(&self, options: &RTCOfferOptions) -> Result<RTCSessionDescription, RTCError> {
+impl crate::traits::PeerConnectionApi for RTCPeerConnection {
+    async fn create_offer(&self, options: &RTCOfferOptions) -> Result<RTCSessionDescription, RTCError> {
         self.backend.create_offer(options).await
     }
-
-    pub async fn create_answer(&self, options: &RTCAnswerOptions) -> Result<RTCSessionDescription, RTCError> {
+    async fn create_answer(&self, options: &RTCAnswerOptions) -> Result<RTCSessionDescription, RTCError> {
         self.backend.create_answer(options).await
     }
-
-    pub async fn set_local_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
+    async fn set_local_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
         self.backend.set_local_description(desc).await
     }
-
-    pub async fn set_remote_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
+    async fn set_remote_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
         self.backend.set_remote_description(desc).await
     }
-
-    pub async fn add_ice_candidate(&self, candidate: &RTCIceCandidate) -> Result<(), RTCError> {
+    async fn add_ice_candidate(&self, candidate: &RTCIceCandidate) -> Result<(), RTCError> {
         self.backend.add_ice_candidate(candidate).await
     }
-
-    pub async fn create_data_channel(&self, label: &str, init: RTCDataChannelInit) -> Result<RTCDataChannel, RTCError> {
+    async fn create_data_channel(&self, label: &str, init: RTCDataChannelInit) -> Result<RTCDataChannel, RTCError> {
         self.backend.create_data_channel(label, init).await
     }
-
-    pub fn connection_state(&self) -> RTCPeerConnectionState {
-        self.backend.connection_state()
-    }
-
-    pub fn ice_connection_state(&self) -> RTCIceConnectionState {
-        self.backend.ice_connection_state()
-    }
-
-    pub fn ice_gathering_state(&self) -> RTCIceGatheringState {
-        self.backend.ice_gathering_state()
-    }
-
-    pub fn signaling_state(&self) -> RTCSignalingState {
-        self.backend.signaling_state()
-    }
-
-    pub async fn close(&self) {
-        self.backend.close().await;
-    }
-
-    // ── Track registry (backend-agnostic) ──
-
-    pub fn add_track(&self, track_id: &str, kind: TrackKind) -> Result<String, RTCError> {
+    fn connection_state(&self) -> RTCPeerConnectionState { self.backend.connection_state() }
+    fn ice_connection_state(&self) -> RTCIceConnectionState { self.backend.ice_connection_state() }
+    fn ice_gathering_state(&self) -> RTCIceGatheringState { self.backend.ice_gathering_state() }
+    fn signaling_state(&self) -> RTCSignalingState { self.backend.signaling_state() }
+    async fn close(&self) { self.backend.close().await; }
+    fn add_track(&self, track_id: &str, kind: TrackKind) -> Result<String, RTCError> {
         let mut tracks = self.tracks.lock().unwrap();
-        if tracks.len() >= MAX_TRACKS {
-            return Err(RTCError::Track("max tracks reached".into()));
-        }
+        if tracks.len() >= MAX_TRACKS { return Err(RTCError::Track("max tracks reached".into())); }
         let sender = TrackSender::new(track_id.to_string(), kind);
         let id = track_id.to_string();
         tracks.insert(id.clone(), TrackRef::Sender(sender));
-        // Register the track with the backend (libwebrtc) for RTP transmission.
         self.backend.register_track(track_id, kind)?;
         Ok(id)
     }
-
-    pub fn remove_track(&self, track_id: &str) -> Result<(), RTCError> {
+    fn remove_track(&self, track_id: &str) -> Result<(), RTCError> {
         let mut tracks = self.tracks.lock().unwrap();
-        tracks.remove(track_id).map(|_| ()).ok_or_else(|| {
-            RTCError::Track(format!("track not found: {}", track_id))
-        })
+        tracks.remove(track_id).map(|_|()).ok_or_else(|| RTCError::Track(format!("track not found: {}", track_id)))
     }
-
-    pub fn get_track(&self, track_id: &str) -> Option<TrackRef> {
-        let tracks = self.tracks.lock().unwrap();
-        tracks.get(track_id).cloned()
+    fn get_track(&self, track_id: &str) -> Option<TrackRef> { self.tracks.lock().unwrap().get(track_id).cloned() }
+    fn track_count(&self) -> usize { self.tracks.lock().unwrap().len() }
+    fn track_ids(&self) -> Vec<String> { self.tracks.lock().unwrap().keys().cloned().collect() }
+    fn get_senders(&self) -> Vec<RTCRtpSender> {
+        self.tracks.lock().unwrap().values().filter(|tr| matches!(tr, TrackRef::Sender(_))).map(|tr| RTCRtpSender::new(tr.clone())).collect()
     }
-
-    pub fn track_count(&self) -> usize {
-        self.tracks.lock().unwrap().len()
+    fn get_receivers(&self) -> Vec<RTCRtpReceiver> {
+        self.tracks.lock().unwrap().values().filter(|tr| matches!(tr, TrackRef::Receiver(_))).map(|tr| RTCRtpReceiver::new(tr.clone())).collect()
     }
-
-    pub fn track_ids(&self) -> Vec<String> {
-        self.tracks.lock().unwrap().keys().cloned().collect()
+    fn on_track<F>(&self, callback: F) where F: Fn(RTCRtpReceiver) + Send + Sync + 'static {
+        *self.on_track_callback.lock().unwrap() = Some(Box::new(callback));
+        let bk_cb_from = self.on_track_callback.clone();
+        self.backend.set_on_track(Box::new(move |tr: TrackReceiver| {
+            if let Some(ref f) = *bk_cb_from.lock().unwrap() { f(RTCRtpReceiver::new(TrackRef::Receiver(tr))); }
+        }));
     }
 }
 
@@ -174,85 +109,23 @@ impl RTCPeerConnection {
 impl RTCPeerConnection {
     pub fn on_data_channel(
         &self,
-        f: Box<
-            dyn FnMut(
-                    std::sync::Arc<webrtc::data_channel::RTCDataChannel>,
-                ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
-                + Send
-                + Sync
-                + 'static,
-        >,
-    ) {
-        self.backend.on_data_channel(f);
-    }
-
+        f: Box<dyn FnMut(Arc<webrtc::data_channel::RTCDataChannel>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync + 'static>,
+    ) { self.backend.on_data_channel(f); }
     pub fn on_ice_candidate(
         &self,
-        f: Box<
-            dyn FnMut(
-                    Option<webrtc::ice_transport::ice_candidate::RTCIceCandidate>,
-                ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
-                + Send
-                + Sync
-                + 'static,
-        >,
-    ) {
-        self.backend.on_ice_candidate(f);
-    }
-}
-
-// ── W3C API methods (D146) ──
-
-impl RTCPeerConnection {
-
-    /// W3C getSenders — returns all sender tracks as RTCRtpSender.
-    pub fn get_senders(&self) -> Vec<RTCRtpSender> {
-        self.tracks.lock().unwrap().values()
-            .filter(|tr| matches!(tr, TrackRef::Sender(_)))
-            .map(|tr| RTCRtpSender::new(tr.clone()))
-            .collect()
-    }
-
-    /// W3C getReceivers — returns all receiver tracks as RTCRtpReceiver.
-    pub fn get_receivers(&self) -> Vec<RTCRtpReceiver> {
-        self.tracks.lock().unwrap().values()
-            .filter(|tr| matches!(tr, TrackRef::Receiver(_)))
-            .map(|tr| RTCRtpReceiver::new(tr.clone()))
-            .collect()
-    }
-
-    /// W3C onTrack — register callback for incoming remote tracks.
-    pub fn on_track<F>(&self, callback: F)
-    where F: Fn(RTCRtpReceiver) + Send + Sync + 'static {
-        // Store for client-side access (stateless wrapping)
-        *self.on_track_callback.lock().unwrap() = Some(Box::new(callback));
-        // Forward to backend so the RealObserver can invoke it
-        let bk_cb_from = self.on_track_callback.clone();
-        self.backend.set_on_track(Box::new(move |tr: TrackReceiver| {
-            if let Some(ref f) = *bk_cb_from.lock().unwrap() {
-                // ponyta il: wrap TrackReceiver in RTCRtpReceiver for the client callback
-                f(RTCRtpReceiver::new(TrackRef::Receiver(tr)));
-            }
-        }));
-    }
+        f: Box<dyn FnMut(Option<webrtc::ice_transport::ice_candidate::RTCIceCandidate>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync + 'static>,
+    ) { self.backend.on_ice_candidate(f); }
 }
 
 impl Clone for RTCPeerConnection {
     fn clone(&self) -> Self {
-        Self {
-            backend: self.backend.clone(),
-            tracks: self.tracks.clone(),
-            on_track_callback: Arc::clone(&self.on_track_callback),
-        }
+        Self { backend: self.backend.clone(), tracks: self.tracks.clone(), on_track_callback: Arc::clone(&self.on_track_callback) }
     }
 }
 
 impl std::fmt::Debug for RTCPeerConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RTCPeerConnection")
-            .field("connection_state", &self.connection_state())
-            .field("track_count", &self.track_count())
-            .finish()
+        f.debug_struct("RTCPeerConnection").field("connection_state", &self.connection_state()).field("track_count", &self.track_count()).finish()
     }
 }
 

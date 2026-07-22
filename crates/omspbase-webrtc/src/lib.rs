@@ -15,6 +15,7 @@ pub mod rtp;
 pub mod stats;
 pub mod backend;
 pub mod factory;
+pub mod traits;
 
 // Re-export backend-specific types for examples/tests
 pub use backend::TrackWriteBackend;
