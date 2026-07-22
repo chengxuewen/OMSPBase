@@ -314,8 +314,11 @@ crates/omspbase-webrtc/
 | ICE candidate 管理 | ✅ 已实现 |
 | RTCDataChannel 创建与发送 | ✅ 已实现 |
 | RTCDataChannel 事件接收 (spool) | ⚠️ webrtc-sys 为 stub |
-| 接收端 onTrack 回调 | ⚠️ RealObserver 实施中 |
-| 接收端 VideoSink 帧接收 | ⚠️ FrameSink + VideoSink bridge 实施中 |
+| 接收端 onTrack 回调 | ✅ 已实现 (RealObserver, D173) |
+| 接收端 FrameSink 帧接收 | ✅ 已实现 (VideoSink bridge, D173) |
 | webrtc-rs 后端 | ⚠️ struct 已有，待适配 trait |
 | str0m 后端 | 🔲 Phase 2+ |
-| RTC 前缀重命名 | 🔲 计划中 |
+| RTC 前缀重命名 | ✅ 已完成 (D170) |
+| backends/ → backend/ 目录统一 | ✅ 已完成 (D171) |
+| core → media 模块迁移 | ✅ 已完成 (D169) |
+| RawPixelFormat → PixelFormat 合并 | ✅ 已完成 |
