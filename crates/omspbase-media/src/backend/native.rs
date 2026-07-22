@@ -846,7 +846,7 @@ mod tests {
         let dst_ref_l = i420_ref(&dst_libyuv);
 
         NativeTransform::scale(src_ref, 16, 16, dst_ref_n, 8, 8).unwrap();
-        crate::backends::LibyuvTransform::scale(src_ref, 16, 16, dst_ref_l, 8, 8).unwrap();
+        crate::backend::LibyuvTransform::scale(src_ref, 16, 16, dst_ref_l, 8, 8).unwrap();
 
         // Both backends should produce identical outputs for nearest-neighbor scale
         assert_eq!(dst_native.data_y, dst_libyuv.data_y);
@@ -875,7 +875,7 @@ mod tests {
         let mut nv12_y_l = vec![0u8; 64];
         let mut nv12_uv_l = vec![0u8; 32];
         let src_ref2 = i420_ref(&src_buf);
-        crate::backends::LibyuvTransform::i420_to_nv12(
+        crate::backend::LibyuvTransform::i420_to_nv12(
             src_ref2, 8, 8, &mut nv12_y_l, &mut nv12_uv_l,
         )
         .unwrap();

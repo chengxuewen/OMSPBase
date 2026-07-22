@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 #[cfg(feature = "backend-native")]
-use omspbase_media::backends::NativeTransform;
+use omspbase_media::backend::NativeTransform;
 #[cfg(feature = "backend-yuv-sys")]
-use omspbase_media::backends::LibyuvTransform;
+use omspbase_media::backend::LibyuvTransform;
 use omspbase_media::base::frame::BoxVideoFrame;
 use omspbase_media::error::MediaError;
 use omspbase_media::pipeline::generator::{

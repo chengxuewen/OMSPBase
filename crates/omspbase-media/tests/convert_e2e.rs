@@ -1,4 +1,4 @@
-use omspbase_media::backends::ActiveTransform;
+use omspbase_media::backend::ActiveTransform;
 use omspbase_media::base::buffer::{I420Buffer, VideoBuffer};
 use omspbase_media::pixel_format::PixelFormat;
 use omspbase_media::transform::VideoTransform;

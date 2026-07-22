@@ -19,10 +19,10 @@ use omspbase_media::pixel_format::PixelFormat;
 
 use omspbase_media::transform::VideoTransform;
 #[cfg(feature = "backend-native")]
-use omspbase_media::backends::NativeTransform;
+use omspbase_media::backend::NativeTransform;
 
 #[cfg(feature = "backend-yuv-sys")]
-use omspbase_media::backends::LibyuvTransform;
+use omspbase_media::backend::LibyuvTransform;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;

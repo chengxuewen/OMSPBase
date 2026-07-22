@@ -1,6 +1,6 @@
 mod common;
 
-use omspbase_media::backends::ActiveTransform;
+use omspbase_media::backend::ActiveTransform;
 use omspbase_media::base::buffer::{I420Buffer, VideoBuffer};
 use omspbase_media::base::rotation::VideoRotation;
 use omspbase_media::transform::VideoTransform;

@@ -12,7 +12,7 @@
 use eframe::egui;
 use omspbase_media::base::buffer::{I420Buffer, VideoBuffer};
 use omspbase_media::base::rotation::VideoRotation;
-use omspbase_media::backends::NativeTransform;
+use omspbase_media::backend::NativeTransform;
 use omspbase_media::pixel_format::PixelFormat;
 use omspbase_media::transform::VideoTransform;
 
