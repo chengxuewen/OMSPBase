@@ -9,12 +9,12 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use omspbase_core::error::CoreError;
-use omspbase_core::pipeline::{
+use omspbase_media::pipeline::core::{
     FormatSpec, InternalPacket, MediaSink, MediaSource, MediaType, NodeCapability,
     NodeInfo, PipelineNode,
 };
 #[cfg(feature = "gstreamer")]
-use omspbase_core::pipeline::{EncodedFragment, FragmentFlags, FrameTiming};
+use omspbase_media::pipeline::core::{EncodedFragment, FragmentFlags, FrameTiming};
 
 type Result<T> = std::result::Result<T, CoreError>;
 

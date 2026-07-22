@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 omspbase-core = { path = "../omspbase-core" }
+omspbase-media = { path = "../omspbase-media" }
 # GStreamer (optional — requires system GStreamer)
 gstreamer = { version = "0.23", optional = true }
 gstreamer-app = { version = "0.23", optional = true }

@@ -3766,6 +3766,7 @@ dependencies = [
  "omspbase-core",
  "rand 0.8.7",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
  "yuv-sys",
 ]
@@ -3782,6 +3783,7 @@ dependencies = [
  "gstreamer-video",
  "hmac",
  "omspbase-core",
+ "omspbase-media",
  "omspbase-webrtc",
  "serde",
  "serde_json",
@@ -3809,6 +3811,7 @@ dependencies = [
  "gstreamer-video",
  "hmac",
  "omspbase-core",
+ "omspbase-media",
  "omspbase-webrtc",
  "prometheus-client",
  "serde",

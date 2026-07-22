@@ -8,8 +8,8 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use crate::error::CoreError;
-use crate::pipeline::{
+use omspbase_core::error::CoreError;
+use crate::pipeline::core::{
     InternalPacket, MediaProcessor, MediaSink, MediaSource,
 };
 
@@ -212,9 +212,9 @@ impl PipelineEngine {
                     Ok(output) => current = output,
                     Err(e) => {
                         tracing::error!(chain = %id, processor_idx = i, error = %e, "processor failed");
-                        current = InternalPacket::Metadata(crate::pipeline::PacketMetadata {
+                        current = InternalPacket::Metadata(crate::pipeline::core::PacketMetadata {
                             track_id: String::new(),
-                            event: crate::pipeline::MetadataEvent::TrackEnded,
+                            event: crate::pipeline::core::MetadataEvent::TrackEnded,
                         });
                         break;
                     }
@@ -253,7 +253,7 @@ impl PipelineEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::{
+    use crate::pipeline::core::{
         EncodedFragment, FrameTiming, FragmentFlags, MediaType, NodeCapability,
     };
     use std::sync::Mutex;
@@ -263,17 +263,17 @@ mod tests {
         name: &'static str,
     }
 
-    impl crate::pipeline::NodeInfo for TestSource {
+    impl crate::pipeline::core::NodeInfo for TestSource {
         fn name(&self) -> &str { self.name }
         fn capabilities(&self) -> NodeCapability {
             NodeCapability {
-                input: crate::pipeline::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
-                output: crate::pipeline::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
+                input: crate::pipeline::core::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
+                output: crate::pipeline::core::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
             }
         }
     }
 
-    impl crate::pipeline::PipelineNode for TestSource {
+    impl crate::pipeline::core::PipelineNode for TestSource {
         fn on_start(&mut self) -> Result<()> { self.counter = 0; Ok(()) }
         fn on_stop(&mut self) -> Result<()> { Ok(()) }
     }
@@ -298,17 +298,17 @@ mod tests {
 
     struct TestProcessor { name: &'static str }
 
-    impl crate::pipeline::NodeInfo for TestProcessor {
+    impl crate::pipeline::core::NodeInfo for TestProcessor {
         fn name(&self) -> &str { self.name }
         fn capabilities(&self) -> NodeCapability {
             NodeCapability {
-                input: crate::pipeline::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
-                output: crate::pipeline::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
+                input: crate::pipeline::core::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
+                output: crate::pipeline::core::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
             }
         }
     }
 
-    impl crate::pipeline::PipelineNode for TestProcessor {
+    impl crate::pipeline::core::PipelineNode for TestProcessor {
         fn on_start(&mut self) -> Result<()> { Ok(()) }
         fn on_stop(&mut self) -> Result<()> { Ok(()) }
     }
@@ -339,17 +339,17 @@ mod tests {
         }
     }
 
-    impl crate::pipeline::NodeInfo for TestSink {
+    impl crate::pipeline::core::NodeInfo for TestSink {
         fn name(&self) -> &str { self.name }
         fn capabilities(&self) -> NodeCapability {
             NodeCapability {
-                input: crate::pipeline::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
-                output: crate::pipeline::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
+                input: crate::pipeline::core::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
+                output: crate::pipeline::core::FormatSpec { media_type: MediaType::Both, codecs: None, pixel_formats: vec![] },
             }
         }
     }
 
-    impl crate::pipeline::PipelineNode for TestSink {
+    impl crate::pipeline::core::PipelineNode for TestSink {
         fn on_start(&mut self) -> Result<()> { Ok(()) }
         fn on_stop(&mut self) -> Result<()> { Ok(()) }
     }

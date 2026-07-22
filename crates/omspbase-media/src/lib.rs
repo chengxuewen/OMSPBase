@@ -5,7 +5,9 @@ pub mod pixel_format;
 pub mod transform;
 pub mod base;
 pub mod pipeline;
-pub mod backends;
+pub mod backend;
+pub mod engine;
+pub mod plugin;
 
 #[cfg(not(any(feature = "backend-yuv-sys", feature = "backend-native")))]
 compile_error!(

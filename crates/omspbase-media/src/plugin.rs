@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 use std::sync::Arc;
 use std::any::Any;
-use crate::error::CoreError;
-use crate::pipeline::{NodeType, MediaType, RawPixelFormat, CodecId, FormatQuery};
+use omspbase_core::error::CoreError;
+use crate::pipeline::core::{NodeType, MediaType, RawPixelFormat, CodecId, FormatQuery};
 type Result<T> = std::result::Result<T, CoreError>;
 
 /// Plugin kind: compile-time (statically linked) or run-time (dlopen).

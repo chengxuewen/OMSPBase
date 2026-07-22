@@ -15,7 +15,7 @@ use std::process;
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use omspbase_core::engine::PipelineEngine;
+use omspbase_media::engine::PipelineEngine;
 use omspbase_core::protocol::SignalingMessage;
 use signaling::SignalingClient;
 mod config;
@@ -180,7 +180,7 @@ async fn main() {
                                         Err(e) => tracing::error!("Failed to set remote description: {e}"),
                                     }
                                 }
-                                SignalingMessage::IceCandidate { candidate, sdp_mid, sdp_mline_index, .. } => {
+                                SignalingMessage::RTCIceCandidate { candidate, sdp_mid, sdp_mline_index, .. } => {
                                     let candidate_json = serde_json::json!({
                                         "candidate": candidate,
                                         "sdpMid": sdp_mid,

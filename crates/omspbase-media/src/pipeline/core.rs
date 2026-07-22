@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::error::CoreError;
+use omspbase_core::error::CoreError;
 
 // Type alias for all pipeline operations.
 type Result<T> = std::result::Result<T, CoreError>;

@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use omspbase_core::error::CoreError;
-use omspbase_core::pipeline::{
+use omspbase_media::pipeline::core::{
     EncodedFragment, FormatSpec, FragmentFlags, FrameTiming, InternalPacket, MediaSink,
     MediaSource, MediaType, NodeCapability, NodeInfo, PipelineNode,
 };

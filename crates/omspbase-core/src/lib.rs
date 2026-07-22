@@ -12,7 +12,3 @@ pub mod error;
 pub mod metrics;
 pub mod protocol;
 pub mod auth;
-pub mod pipeline;
-pub mod plugin;
-pub mod broadcast;
-pub mod engine;
