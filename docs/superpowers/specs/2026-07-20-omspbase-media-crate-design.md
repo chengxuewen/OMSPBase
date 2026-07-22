@@ -1,13 +1,15 @@
 # omspbase-media Crate Design
 
-**Created:** 2026-07-20
-**Status:** Draft — team-reviewed, ready for implementation plan
+**Created:** 2026-07-20 | **Updated:** 2026-07-22
+**Status:** ✅ Implemented — divergences from spec documented below
 
 ## Overview
 
 `omspbase-media` is a new workspace crate providing video frame types, pixel format buffers, source/sink pipeline traits, frame generators, and spatial/color transforms. Code is ported from [webrtc-kit](https://github.com/chengxuewen/webrtc-kit) `video/` module, with enhancements from OpenCTK's `media/source` reference architecture.
 
-**Design principle:** Independent crate — no dependency on `omspbase-core`. Self-contained with its own `VideoFrame<T>`, `VideoBuffer` trait, `VideoSource<F>` / `VideoSink<F>` pipeline traits.
+**Design principle:** Media crate with minimal `omspbase-core` dependency (for `CoreError`). Async pipeline engine (`tokio`). Self-contained video types with `VideoFrame<T>`, `VideoBuffer` trait, `VideoSource<F>` / `VideoSink<F>` pipeline traits.
+
+**Divergence from original spec:** Added `omspbase-core` and `tokio` deps after engine/plugin modules moved from core (D169).
 
 ## Crate Structure
 
@@ -19,6 +21,8 @@ crates/omspbase-media/
 │   ├── error.rs                  # MediaError (use thiserror::Error)
 │   ├── pixel_format.rs           # PixelFormat enum (unified RGB + YUV)
 │   ├── transform.rs              # VideoTransform trait (scale/mirror/crop/rotate + color convert)
+│   ├── engine.rs                 # PipelineEngine (moved from core, D169)
+│   ├── plugin.rs                 # PluginManager (moved from core, D169)
 │   ├── base/                     # Zero-dependency foundation types
 │   │   ├── mod.rs
 │   │   ├── frame.rs              # VideoFrame<T>, FrameMetadata, BoxVideoFrame
@@ -28,12 +32,15 @@ crates/omspbase-media/
 │   │   ├── mod.rs
 │   │   ├── source.rs             # VideoSource<F> trait
 │   │   ├── sink.rs               # VideoSink<F> trait + VideoSinkWants
-│   │   ├── broadcaster.rs        # VideoBroadcaster<F> (implements both)
-│   │   └── generator.rs          # VideoFrameGenerator + FramePattern + SquarePattern
-│   └── backends/                 # Backend implementations
+│   │   ├── broadcaster.rs        # VideoBroadcaster<F> (frame fan-out)
+│   │   ├── core.rs               # Pipeline traits (moved from core: MediaSource etc.)
+│   │   ├── broadcast.rs          # FragmentBroadcaster<P> (moved from core)
+│   │   └── generator/
+│   │       └── ...               # VideoFrameGenerator + patterns
+│   └── backend/                  # Backend implementations (singular)
 │       ├── mod.rs
-│       ├── native.rs             # Pure Rust (nearest-neighbor from webrtc-kit, feature = "backend-native")
-│       └── libyuv.rs             # libyuv-sys bindings (default feature)
+│       ├── native.rs             # Pure Rust (feature = "backend-native")
+│       └── libyuv.rs             # yuv-sys bindings (default feature)
 ```
 
 **Layer dependency:** `pixel_format` + `base` (zero deps) → `pipeline` → `transform` + `backends`.
@@ -51,16 +58,27 @@ license.workspace = true
 [dependencies]
 thiserror = "2"
 tracing = "0.1"
-libyuv-sys = { version = "0.1", optional = true }
+chrono = { version = "0.4", features = ["clock"] }
+rand = "0.8"
+yuv-sys = { version = "0.3", optional = true }
+omspbase-core = { path = "../omspbase-core" }
+tokio = { version = "1", features = ["sync", "rt-multi-thread", "time", "macros"] }
+
+[dev-dependencies]
+eframe = "0.30"
+egui = "0.30"
+image = "0.25"
 
 [features]
-default = ["backend-libyuv-sys"]
-backend-libyuv-sys = ["dep:libyuv-sys"]
+default = ["backend-yuv-sys"]
+backend-yuv-sys = ["dep:yuv-sys"]
 backend-native = []
 
 [package.metadata.docs.rs]
-features = ["backend-libyuv-sys"]
+features = ["backend-yuv-sys"]
 ```
+
+**Divergence from original spec:** `libyuv-sys` renamed to `yuv-sys`. Added `omspbase-core`, `tokio`, `chrono`, `rand` deps (engine/plugin from core). Added egui dev-deps for examples.
 
 - Minimal dependencies: `thiserror` + `tracing` + optional `libyuv-sys`
 - Inherits `version`/`edition`/`license` from workspace
