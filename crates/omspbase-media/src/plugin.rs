@@ -2,7 +2,8 @@
 use std::sync::Arc;
 use std::any::Any;
 use omspbase_core::error::CoreError;
-use crate::pipeline::core::{NodeType, MediaType, RawPixelFormat, CodecId, FormatQuery};
+use crate::pipeline::core::{NodeType, MediaType, CodecId, FormatQuery};
+use crate::pixel_format::PixelFormat;
 type Result<T> = std::result::Result<T, CoreError>;
 
 /// Plugin kind: compile-time (statically linked) or run-time (dlopen).
@@ -14,7 +15,7 @@ pub struct PluginCapability {
     pub node_type: NodeType,
     pub media_type: MediaType,
     pub codecs: Vec<CodecId>,
-    pub pixel_formats: Vec<RawPixelFormat>,
+    pub pixel_formats: Vec<PixelFormat>,
     pub priority: u8,
 }
 /// A plugin is a factory of pipeline nodes.

@@ -11,8 +11,7 @@ type Result<T> = std::result::Result<T, CoreError>;
 pub type CodecId = String;
 
 /// I420 is the standard internal format (D75).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RawPixelFormat { Nv12, I420, Bgra, P010 }
+use crate::pixel_format::PixelFormat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaType { Encoded, Raw, Both }
@@ -50,7 +49,7 @@ pub struct FrameTiming {
 pub struct RawFrame {
     pub track_id: String,
     pub timing: FrameTiming,
-    pub format: RawPixelFormat,
+    pub format: PixelFormat,
     pub planes: Vec<Plane>,
     pub texture: Option<TextureHandle>,
 }
@@ -100,7 +99,7 @@ pub enum MetadataEvent {
 pub struct FormatSpec {
     pub media_type: MediaType,
     pub codecs: Option<Vec<CodecId>>,
-    pub pixel_formats: Vec<RawPixelFormat>,
+    pub pixel_formats: Vec<PixelFormat>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +114,7 @@ pub struct FormatQuery {
     pub node_type: NodeType,
     pub media_type: MediaType,
     pub codec: Option<CodecId>,
-    pub pixel_format: Option<RawPixelFormat>,
+    pub pixel_format: Option<PixelFormat>,
 }
 
 // ── 4. Plugin Registry ──
@@ -128,7 +127,7 @@ pub struct PluginRegistry {
     pub node_type: NodeType,
     pub media_type: MediaType,
     pub codecs: Vec<CodecId>,
-    pub pixel_formats: Vec<RawPixelFormat>,
+    pub pixel_formats: Vec<PixelFormat>,
     pub priority: u8,
     pub factory: fn() -> Box<dyn std::any::Any + Send>,
 }
