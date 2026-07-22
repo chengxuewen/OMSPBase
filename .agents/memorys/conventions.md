@@ -83,3 +83,18 @@ webrtc-sys (C++, libwebrtc)
 **理由**: GStreamer 和 libwebrtc 使用不同的内存分配器 (glib malloc vs C++ new)。`&[u8]` 接口强制 copy，确保 Rust 所有权语义下的内存安全。
 
 **来源**: D155, OBS Studio 实践
+
+---
+
+## C6: omspbase-webrtc 命名规范
+
+**约束**：omspbase-webrtc crate 遵循以下命名规范：
+- **类型名**: 对外 pub 类型全大写 RTC 前缀 (RTCPeerConnection, RTCDataChannel...)，内部类型不加前缀
+- **方法名**: 全部 snake_case (create_offer, add_track, on_track)，禁止 camelCase W3C 包装
+- **目录名**: backend/ (uniform singular)
+- **枚举变体**: PascalCase
+- **常量**: SCREAMING_SNAKE_CASE
+
+其他 crate (core, media, server, remote-*) 使用 bare names，无前缀。
+
+**来源**: D166, D167, D168 (2026-07-22)
