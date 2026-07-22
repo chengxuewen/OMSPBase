@@ -47,7 +47,7 @@ mod imp {
             enc.set_width(config.format.width);
             enc.set_height(config.format.height);
             enc.set_format(ffmpeg::format::Pixel::YUV420P);
-            enc.set_time_base(ffmpeg::Rational(1, 30));
+            enc.set_time_base(ffmpeg::Rational(1, config.fps.num as i32));
             enc.set_gop(config.gop);
             enc.set_max_b_frames(0);
             self.encoder = Some(enc.open_with(x264_opts(config))
