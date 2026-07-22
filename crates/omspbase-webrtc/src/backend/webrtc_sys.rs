@@ -15,8 +15,8 @@ use cxx::SharedPtr;
 use super::DcBackend;
 use super::PcBackend;
 use super::TrackWriteBackend;
-use crate::channel::{RTCDataChannelRx, RTCDataChannelState};
-use crate::peer::{
+use crate::data_channel::{RTCDataChannelRx, RTCDataChannelState};
+use crate::peer_connection::{
     RTCAnswerOptions, RTCIceCandidate, RTCIceConnectionState, RTCIceGatheringState, RTCIceTransportPolicy,
     RTCOfferOptions, RTCConfiguration, RTCPeerConnectionState, RTCSignalingState,
 };
@@ -316,9 +316,9 @@ impl WebrtcSysPc {
     pub(crate) async fn create_data_channel(
         &self,
         label: &str,
-        init: crate::channel::RTCDataChannelInit,
-    ) -> Result<crate::channel::RTCDataChannel, RTCError> {
-        use crate::channel::RTCDataChannel;
+        init: crate::data_channel::RTCDataChannelInit,
+    ) -> Result<crate::data_channel::RTCDataChannel, RTCError> {
+        use crate::data_channel::RTCDataChannel;
 
         let sys_init = webrtc_sys::data_channel::ffi::DataChannelInit {
             ordered: init.ordered,

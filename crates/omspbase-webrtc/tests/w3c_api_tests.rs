@@ -8,7 +8,9 @@
 
 #[cfg(test)]
 mod factory_tests {
-    use omspbase_webrtc::peer::{RTCConfiguration, RTCPeerConnectionFactory, RTCPeerConnectionState};
+    use omspbase_webrtc::peer_connection::{RTCConfiguration, RTCPeerConnectionState};
+    use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+
 
     #[test]
     fn factory_creates_default() {
@@ -47,10 +49,9 @@ mod factory_tests {
 
 #[cfg(test)]
 mod state_tests {
-    use omspbase_webrtc::peer::{
-        RTCIceConnectionState, RTCIceGatheringState, RTCConfiguration, RTCPeerConnectionFactory,
-        RTCPeerConnectionState, RTCSignalingState,
-    };
+    use omspbase_webrtc::peer_connection::{RTCIceConnectionState, RTCIceGatheringState, RTCConfiguration, RTCPeerConnectionState, RTCSignalingState};
+    use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+
 
     #[test]
     fn initial_states_are_correct() {
@@ -102,7 +103,9 @@ mod state_tests {
 
 #[cfg(test)]
 mod sdp_tests {
-    use omspbase_webrtc::peer::{RTCAnswerOptions, RTCOfferOptions, RTCConfiguration, RTCPeerConnectionFactory};
+    use omspbase_webrtc::peer_connection::{RTCAnswerOptions, RTCOfferOptions, RTCConfiguration};
+    use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+
     use omspbase_webrtc::sdp::RTCSdpType;
 
     #[test]
@@ -206,7 +209,9 @@ mod sdp_tests {
 
 #[cfg(test)]
 mod ice_tests {
-    use omspbase_webrtc::peer::{RTCIceCandidate, RTCConfiguration, RTCPeerConnectionFactory};
+    use omspbase_webrtc::peer_connection::{RTCIceCandidate, RTCConfiguration};
+    use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+
 
     #[test]
     fn add_ice_candidate_succeeds() {
@@ -248,8 +253,10 @@ mod ice_tests {
 
 #[cfg(test)]
 mod datachannel_tests {
-    use omspbase_webrtc::channel::{RTCDataChannelInit, RTCDataChannelState};
-    use omspbase_webrtc::peer::{RTCConfiguration, RTCPeerConnectionFactory};
+    use omspbase_webrtc::data_channel::{RTCDataChannelInit, RTCDataChannelState};
+    use omspbase_webrtc::peer_connection::{RTCConfiguration};
+    use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+
 
     #[test]
     fn create_data_channel_returns_correct_label() {
@@ -351,7 +358,7 @@ mod datachannel_tests {
 
 #[cfg(test)]
 mod stats_and_rtp_tests {
-    use omspbase_webrtc::rtp_params::{
+    use omspbase_webrtc::rtp::{
         RTCRtpCodecParameters, RTCRtpEncodingParameters, RTCRtpHeaderExtensionParameters, RTCRtpParameters,
     };
     use omspbase_webrtc::stats::{

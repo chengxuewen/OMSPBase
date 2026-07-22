@@ -6,25 +6,25 @@
 //! - `backend-webrtc-rs` feature: real webrtc-rs implementation
 //! - default (no feature): stub for compilation without WebRTC
 
-pub mod channel;
-pub mod peer;
+pub mod data_channel;
+pub mod peer_connection;
 pub mod sdp;
 pub mod track;
 pub mod engine;
 pub mod rtp;
-pub mod rtp_params;
 pub mod stats;
 pub mod backend;
+pub mod factory;
 
 // Re-export backend-specific types for examples/tests
 pub use backend::TrackWriteBackend;
-pub use peer::*;
+pub use peer_connection::*;
 pub use sdp::*;
 pub use track::*;
 pub use engine::*;
 pub use rtp::*;
-pub use rtp_params::*;
 pub use stats::*;
+pub use factory::*;
 
 /// Error type for all WebRTC operations.
 #[derive(Debug, thiserror::Error)]

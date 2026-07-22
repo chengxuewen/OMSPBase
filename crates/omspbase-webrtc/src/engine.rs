@@ -15,7 +15,7 @@ compile_error!(
      Enable exactly one of: backend-webrtc-rs, backend-webrtc-sys, backend-str0m"
 );
 
-use crate::peer::RTCPeerConnectionFactory;
+use crate::factory::RTCPeerConnectionFactory;
 
 /// Reference: webrtc-kit create_factory() pattern. D151.
 pub struct RTCEngine;

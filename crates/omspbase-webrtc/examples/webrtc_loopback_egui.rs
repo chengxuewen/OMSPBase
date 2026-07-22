@@ -13,7 +13,8 @@
 
 use eframe::egui;
 use egui::ColorImage;
-use omspbase_webrtc::peer::*;
+use omspbase_webrtc::peer_connection::*;
+use omspbase_webrtc::factory::RTCPeerConnectionFactory;
 use omspbase_webrtc::track::{TrackKind, TrackSender};
 use omspbase_webrtc::TrackWriteBackend;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

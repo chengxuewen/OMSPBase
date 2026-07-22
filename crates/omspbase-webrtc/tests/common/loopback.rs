@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use omspbase_webrtc::peer::{
+use omspbase_webrtc::peer_connection::{
     RTCAnswerOptions, RTCOfferOptions, RTCConfiguration, RTCPeerConnectionFactory,
 };
 use omspbase_webrtc::RTCError;
@@ -58,8 +58,8 @@ impl FpsCounter {
 /// # Errors
 /// Returns `RTCError` if any SDP operation fails.
 pub async fn exchange_sdp(
-    pc1: &omspbase_webrtc::peer::RTCPeerConnection,
-    pc2: &omspbase_webrtc::peer::RTCPeerConnection,
+    pc1: &omspbase_webrtc::peer_connection::RTCPeerConnection,
+    pc2: &omspbase_webrtc::peer_connection::RTCPeerConnection,
 ) -> Result<(), RTCError> {
     // 1. PC1 creates offer
     let offer = pc1.create_offer(&RTCOfferOptions::default()).await?;
@@ -86,8 +86,8 @@ pub async fn exchange_sdp(
 pub async fn create_connected_pair(
 ) -> Result<
     (
-        omspbase_webrtc::peer::RTCPeerConnection,
-        omspbase_webrtc::peer::RTCPeerConnection,
+        omspbase_webrtc::peer_connection::RTCPeerConnection,
+        omspbase_webrtc::peer_connection::RTCPeerConnection,
     ),
     RTCError,
 > {

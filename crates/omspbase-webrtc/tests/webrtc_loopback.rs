@@ -11,7 +11,7 @@
 mod common;
 use common::loopback::{create_connected_pair, generate_test_frame, FpsCounter};
 
-use omspbase_webrtc::peer::RTCPeerConnectionFactory;
+use omspbase_webrtc::factory::RTCPeerConnectionFactory;
 use omspbase_webrtc::track::{TrackKind, TrackRef};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -39,7 +39,7 @@ fn loopback_sdp_exchange_succeeds() {
     rt.block_on(async {
         let (pc1, pc2) = create_connected_pair().await.expect("connect");
         // After SDP exchange, signaling state should be stable
-        use omspbase_webrtc::peer::RTCSignalingState;
+        use omspbase_webrtc::peer_connection::RTCSignalingState;
         assert_eq!(pc1.signaling_state(), RTCSignalingState::Stable);
         assert_eq!(pc2.signaling_state(), RTCSignalingState::Stable);
     });
@@ -54,7 +54,7 @@ fn loopback_video_push_receive() {
         // Track received frames on PC2
         let received_count = Arc::new(AtomicU64::new(0));
         let rc = received_count.clone();
-        pc2.onTrack(move |_receiver| {
+        pc2.on_track(move |_receiver| {
             rc.fetch_add(1, Ordering::Relaxed);
         });
 
@@ -137,7 +137,7 @@ fn loopback_multiple_tracks() {
         // onTrack callback captures receiver IDs
         let received_ids = Arc::new(Mutex::new(Vec::new()));
         let ri = received_ids.clone();
-        pc2.onTrack(move |receiver| {
+        pc2.on_track(move |receiver| {
             ri.lock().unwrap().push(receiver.track_id.clone());
         });
 
@@ -185,7 +185,7 @@ fn loopback_close_connects_gracefully() {
         pc2.close().await;
 
         // Verify closed state
-        use omspbase_webrtc::peer::RTCPeerConnectionState;
+        use omspbase_webrtc::peer_connection::RTCPeerConnectionState;
         assert!(
             matches!(
                 pc1.connection_state(),

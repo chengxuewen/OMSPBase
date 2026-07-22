@@ -4,8 +4,8 @@
 use super::DcBackend;
 use super::PcBackend;
 use super::TrackWriteBackend;
-use crate::channel::{RTCDataChannel, RTCDataChannelInit, RTCDataChannelRx, RTCDataChannelState};
-use crate::peer::{
+use crate::data_channel::{RTCDataChannel, RTCDataChannelInit, RTCDataChannelRx, RTCDataChannelState};
+use crate::peer_connection::{
     RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions, RTCConfiguration,
     RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState,
 };

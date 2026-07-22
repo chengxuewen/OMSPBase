@@ -4,8 +4,8 @@
 //! and compile-time type alias dispatch via cfg gates.
 //! Zero dyn overhead — all dispatch is monomorphized.
 
-use crate::channel::{RTCDataChannel, RTCDataChannelRx, RTCDataChannelState};
-use crate::peer::{RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions, RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState};
+use crate::data_channel::{RTCDataChannel, RTCDataChannelRx, RTCDataChannelState};
+use crate::peer_connection::{RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions, RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState};
 use crate::sdp::RTCSessionDescription;
 use crate::stats::RTCStats;
 use crate::track::{RTCAudioTrackConfig, TrackKind, TrackReceiver};

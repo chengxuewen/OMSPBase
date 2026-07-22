@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::backend::{ActivePc, PcBackend};
-use crate::channel::{RTCDataChannel, RTCDataChannelInit};
+use crate::data_channel::{RTCDataChannel, RTCDataChannelInit};
 use crate::sdp::RTCSessionDescription;
 use crate::track::{TrackKind, TrackReceiver, TrackSender, TrackRef};
 use crate::RTCError;
@@ -69,47 +69,6 @@ pub struct RTCIceCandidate {
     pub sdp_mline_index: Option<u16>,
 }
 
-// ── RTCPeerConnectionFactory ──
-
-use crate::backend::ActiveFactory;
-
-pub struct RTCPeerConnectionFactory {
-    pub backend: ActiveFactory,
-}
-
-impl RTCPeerConnectionFactory {
-    pub fn new() -> Self {
-        Self { backend: ActiveFactory::default() }
-    }
-
-    pub async fn create_peer_connection(&self, config: RTCConfiguration) -> Result<RTCPeerConnection, RTCError> {
-        let pc_backend = self.backend.create_peer_connection(config).await?;
-        Ok(RTCPeerConnection {
-            backend: pc_backend,
-            tracks: Arc::new(std::sync::Mutex::new(HashMap::new())),
-            on_track_callback: Arc::new(std::sync::Mutex::new(None)),
-        })
-    }
-
-    /// Create a video track with a real VideoTrackSource (webrtc-sys only).
-    /// For other backends, returns a stub TrackSender.
-    pub fn create_video_track(&self, track_id: &str) -> TrackSender {
-        #[cfg(feature = "backend-webrtc-sys")]
-        {
-            let (backend, _media_track) = self.backend.create_video_track();
-            TrackSender { id: track_id.to_string(), kind: TrackKind::Video, audio_config: None, backend }
-        }
-        #[cfg(not(feature = "backend-webrtc-sys"))]
-        {
-            TrackSender::new(track_id.to_string(), TrackKind::Video)
-        }
-    }
-}
-
-impl Default for RTCPeerConnectionFactory {
-    fn default() -> Self { Self::new() }
-}
-
 // ── RTCPeerConnection ──
 
 /// Callback type for onTrack (D146).
@@ -119,8 +78,8 @@ pub struct RTCPeerConnection {
     /// Direct access to the backend (webrtc-sys/webrtc-rs/stub).
     /// Use for backend-specific operations like accept_video_track.
     pub backend: ActivePc,
-    tracks: Arc<std::sync::Mutex<HashMap<String, TrackRef>>>,
-    on_track_callback: OnTrackCallback,
+    pub(crate) tracks: Arc<std::sync::Mutex<HashMap<String, TrackRef>>>,
+    pub(crate) on_track_callback: OnTrackCallback,
 }
 
 /// Maximum tracks per RTCPeerConnection (D148).
@@ -302,8 +261,9 @@ impl std::fmt::Debug for RTCPeerConnection {
 #[cfg(all(test, not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys"))))]
 mod tests {
     use super::*;
+    use crate::factory::RTCPeerConnectionFactory;
     use crate::sdp::RTCSdpType;
-    use crate::channel::RTCDataChannelInit;
+    use crate::data_channel::RTCDataChannelInit;
 
     #[test]
     fn stub_factory_default_creates() {
@@ -445,17 +405,18 @@ mod tests {
     fn add_track_w3c_returns_sender() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let pc = rt.block_on(RTCPeerConnectionFactory::new().create_peer_connection(RTCConfiguration::default())).unwrap();
-        let sender = pc.add_track("video-w3c", TrackKind::Video).unwrap();
-        assert_eq!(sender.track_id, "video-w3c");
-        assert_eq!(sender.kind, TrackKind::Video);
+        let track_id = pc.add_track("video-w3c", TrackKind::Video).unwrap();
+        assert_eq!(track_id, "video-w3c");
+        let tr = pc.get_track("video-w3c").unwrap();
+        assert_eq!(tr.kind(), TrackKind::Video);
     }
 
     #[test]
     fn get_senders_filters_correctly() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let pc = rt.block_on(RTCPeerConnectionFactory::new().create_peer_connection(RTCConfiguration::default())).unwrap();
-        pc.addTrack("vid-1", TrackKind::Video).unwrap();
-        pc.addTrack("vid-2", TrackKind::Video).unwrap();
+        pc.add_track("vid-1", TrackKind::Video).unwrap();
+        pc.add_track("vid-2", TrackKind::Video).unwrap();
         let senders = pc.get_senders();
         assert_eq!(senders.len(), 2);
     }

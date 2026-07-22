@@ -6,11 +6,11 @@ use std::sync::Arc;
 use super::DcBackend;
 use super::PcBackend;
 use super::TrackWriteBackend;
-use crate::channel::{
+use crate::data_channel::{
     RTCDataChannel as PubDataChannel, RTCDataChannelEvent, RTCDataChannelInit,
     RTCDataChannelRx, RTCDataChannelState, RTCDataMessage,
 };
-use crate::peer::{
+use crate::peer_connection::{
     RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions,
     RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState,
 };
@@ -358,7 +358,7 @@ impl Default for WebrtcRsFactory {
 impl WebrtcRsFactory {
     pub(crate) async fn create_peer_connection(
         &self,
-        config: crate::peer::RTCConfiguration,
+        config: crate::peer_connection::RTCConfiguration,
     ) -> Result<WebrtcRsPc, RTCError> {
         tracing::info!("Creating RTCPeerConnection (webrtc-rs)");
         let mut cfg = webrtc::peer_connection::configuration::RTCConfiguration::default();
