@@ -6,9 +6,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use omspbase_webrtc::peer_connection::{
-    RTCAnswerOptions, RTCOfferOptions, RTCConfiguration, RTCPeerConnectionFactory,
-};
+use omspbase_webrtc::peer_connection::{RTCAnswerOptions, RTCOfferOptions, RTCConfiguration};
+use omspbase_webrtc::factory::RTCPeerConnectionFactory;
 use omspbase_webrtc::RTCError;
 
 /// FPS counter — tracks frame count over time.
