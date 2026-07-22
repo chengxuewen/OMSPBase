@@ -5,8 +5,8 @@
 - **名称**：tether-rally
 - **开发者**：roman01la（个人开源项目）
 - **首次发布**：2024 年（GitHub 仓库创建）
-- **产品定位**：基于 WebRTC 的 ARRMA RC 遥控车全球远程操控系统，提供低延迟 FPV 驾驶体验。虽为玩具级项目，但其 DataChannel 协议设计、分级安全机制和实时控制架构对生产级遥操作系统有直接参考价值
-- **目标用户群体**：RC 遥控车爱好者、遥操作协议研究者、WebRTC DataChannel 实践者
+- **产品定位**：基于 WebRTC 的 ARRMA RC 遥控车全球远程操控系统，提供低延迟 FPV 驾驶体验。虽为玩具级项目，但其 RTCDataChannel 协议设计、分级安全机制和实时控制架构对生产级遥操作系统有直接参考价值
+- **目标用户群体**：RC 遥控车爱好者、遥操作协议研究者、WebRTC RTCDataChannel 实践者
 - **许可 / 商业模式**：开源（GitHub: roman01la/tether-rally），MIT 许可
 
 ## 2. 技术特性
@@ -17,7 +17,7 @@
 │              signaling + TURN + 静态页面托管                      │
 │              Cloudflare Tunnel 穿透内网                           │
 └─────────────┬──────────────────────────────────────┬─────────────┘
-              │ WebRTC (Video + DataChannel)         │ Cloudflare Tunnel
+              │ WebRTC (Video + RTCDataChannel)         │ Cloudflare Tunnel
               │ P2P 直连 (LAN RTT ~10-15ms)          │
               ▼                                      ▼
 ┌──────────────────────────┐          ┌─────────────────────────────┐
@@ -28,7 +28,7 @@
 │  │ 前置主摄像头 +     │  │          │  │  · H.264 转发 (无转码)  │ │
 │  │ 后置 RTSP PiP      │  │          │  │  · RTSP → WebRTC 桥接   │ │
 │  ├────────────────────┤  │          │  ├─────────────────────────┤ │
-│  │ DataChannel        │  │          │  │ HMAC-SHA256 Token 验证  │ │
+│  │ RTCDataChannel        │  │          │  │ HMAC-SHA256 Token 验证  │ │
 │  │ ordered:false      │  │          │  │  · 短期有效              │ │
 │  │ maxRetransmits:0   │  │          │  │  · 连接时验证一次       │ │
 │  │ 自定义二进制协议    │  │          │  │  · 防未授权操控          │ │
@@ -80,14 +80,14 @@
 |------|------|
 | 视频传输延迟 | LAN ~120ms G2G（采集→编码→网络→解码→渲染），Internet ~150ms+；720p@60fps H.264 硬件编码 |
 | 控制协议 | 自定义最小二进制协议：`seq(uint16 LE) + cmd(uint8) + payload`，控制包仅 7 字节 (3 字节头 + 4 字节负载) |
-| DataChannel | `ordered: false, maxRetransmits: 0`（纯 UDP 语义），控制频率 50Hz（20ms 间隔），4 条独立 DataChannel |
+| RTCDataChannel | `ordered: false, maxRetransmits: 0`（纯 UDP 语义），控制频率 50Hz（20ms 间隔），4 条独立 RTCDataChannel |
 | 安全冗余 | ESP32 端三级超时：L1(80ms 保活) → L2(250ms 回中) → L3(长期无包安全停车)；WiFi 信号监测 |
 | 编码 | Raspberry Pi Camera Module 3 硬件 H.264 编码，零 CPU 开销；GStreamer/MediaMTX 封装 |
-| 多通道分离 | 控制(50Hz)·遥测(10Hz)·心跳(2Hz)·可靠指令(按需) — 四条独立 DataChannel |
+| 多通道分离 | 控制(50Hz)·遥测(10Hz)·心跳(2Hz)·可靠指令(按需) — 四条独立 RTCDataChannel |
 | 认证 | HMAC-SHA256 短期 Token，Pi 端验证，防未授权操控 |
 | 缓冲管理 | bufferedAmount 监控 + onbufferedamountlow 事件驱动背压处理 |
 
-### WebRTC DataChannel 配置详解
+### WebRTC RTCDataChannel 配置详解
 ```
 控制通道 (dc-ctrl):
   ordered: false          ← 关闭排序，旧指令到达即丢弃
@@ -135,7 +135,7 @@
 | 测量项 | LAN 环境 | Internet (4G 热点) | 说明 |
 |------|---------|------------------|------|
 | 视频 G2G 延迟 | ~120ms | ~150ms+ | 720p@60fps H.264 硬件编码全链路 |
-| DataChannel P2P RTT | ~10-15ms | ~30-100ms | 依赖 TURN 中继距离和 NAT 类型 |
+| RTCDataChannel P2P RTT | ~10-15ms | ~30-100ms | 依赖 TURN 中继距离和 NAT 类型 |
 | 控制指令全链路延迟 | ~15-20ms | ~50-120ms | Browser → Pi → WiFi UDP → ESP32 |
 | ESP32 控制循环 | 5ms (200Hz) | 5ms (200Hz) | Core 1 固定速率，不受网络影响 |
 | Camera 编码延迟 | ~8-12ms | ~8-12ms | Pi Camera Module 3 硬件 H.264 编码器 |
@@ -193,8 +193,8 @@ Byte 35-36: crc16 (uint16 LE)      — CRC-16/XMODEM 校验
 
 | 连接类型 | 吞吐量 | 控制频率 | 数据方向 |
 |---------|--------|---------|---------|
-| DataChannel | ~1-2 KB/s | 50Hz TX | Browser → Pi |
-| DataChannel | ~300-500 B/s | 10Hz TX | Pi → Browser |
+| RTCDataChannel | ~1-2 KB/s | 50Hz TX | Browser → Pi |
+| RTCDataChannel | ~300-500 B/s | 10Hz TX | Pi → Browser |
 | WiFi UDP | ~350 B/s | 50Hz TX | Pi → ESP32 |
 | WiFi UDP | ~370 B/s | 10Hz TX | ESP32 → Pi |
 | DAC 输出 | — | 200Hz | ESP32 → Servo |
@@ -233,7 +233,7 @@ Pi Camera Module 3 → Broadcom ISP → H.264 硬件编码器 → NAL 打包 →
 - PiP 路径：后置 RTSP Camera → MediaMTX 桥接 → 与主流合成（前端 canvas）→ 显示
 
 **控制传输模块**
-- WebRTC DataChannel 双向通信（4 条独立 DC）
+- WebRTC RTCDataChannel 双向通信（4 条独立 DC）
 - 自定义最小二进制控制协议（7-11 字节）
 - 10 种命令类型：
   - PING(0x00): 心跳请求
@@ -246,7 +246,7 @@ Pi Camera Module 3 → Broadcom ISP → H.264 硬件编码器 → NAL 打包 →
   - TELEM(0x07): 遥测数据上报
   - TURBO(0x08): Turbo 模式切换
   - TRACTION(0x09): 牵引力控制切换
-- 控制频率 50Hz（DataChannel → UDP → ESP32 全链路）
+- 控制频率 50Hz（RTCDataChannel → UDP → ESP32 全链路）
 - 序列号机制：uint16 LE（0-65535 回绕），接收端检测丢包/乱序
 
 **ESP32 边缘执行层**
@@ -314,7 +314,7 @@ Pi Camera Module 3 → Broadcom ISP → H.264 硬件编码器 → NAL 打包 →
   - Cloudflare 基础设施依赖重：无 TURN 则无法跨 NAT，无 Tunnel 则无法从公网访问 Pi
   - 无生产级安全认证（ISO 26262 / ISO 21434），不能直接用于载人车辆
   - 无多车并发支持（单 Pi 对单 ESP32 对单车）
-  - DataChannel JSON 遥测序列化效率低于全二进制（10Hz 遥测 JSON 包约 150 字节 vs 二进制 37 字节）
+  - RTCDataChannel JSON 遥测序列化效率低于全二进制（10Hz 遥测 JSON 包约 150 字节 vs 二进制 37 字节）
   - 无音频通道（仅视频 + 控制，无语音通信）
   - HMAC Token 无过期自动刷新 — 需手动生成新 Token 重新部署
 
@@ -326,7 +326,7 @@ tether-rally 的架构经历了三个主要阶段：
 |------|------|------|---------|------|
 | Phase 1 | 2024 Q3 | WebSocket relay (Node.js 中间件) | 100-200ms | 初期原型，浏览器→Node.js→Pi→ESP32 |
 | Phase 2 | 2025 Q1 | Cloudflare Workers 信令 + 直连 | 30-60ms | 移除 Node.js 中继，改为 P2P 直连 |
-| Phase 3 (当前) | 2025 Q3+ | WebRTC DataChannel + 自定义二进制协议 | 10-15ms (LAN) | 统一视频和控制到 WebRTC |
+| Phase 3 (当前) | 2025 Q3+ | WebRTC RTCDataChannel + 自定义二进制协议 | 10-15ms (LAN) | 统一视频和控制到 WebRTC |
 
 ### 社区生态与使用情况
 
@@ -358,7 +358,7 @@ tether-rally 的架构经历了三个主要阶段：
 | 目标平台 | ARRMA RC 遥控车 | 全尺寸乘用车 + 模型车 | comma body 机器人 |
 | 网络 | WiFi/LAN | LTE/5G + MQTT | WiFi/LTE (athenad) |
 | 控制协议 | 7 字节二进制 (DC) | ROS2 DDS (UDP) | Cereal/Cap'n Proto → JSON |
-| DataChannel | 4 条独立 DC | 无 (RTSP+UDP 方案) | 双向 DC (JSON) |
+| RTCDataChannel | 4 条独立 DC | 无 (RTSP+UDP 方案) | 双向 DC (JSON) |
 | 安全等级 | 分级超时（ESP32 端） | 三级安全管道 | athenad 认证 + 错误分级 |
 | 开源 | MIT | Apache 2.0 | MIT |
 | 成熟度 | 个人项目 | 学术研究 | 生产级 (L2 汽车) |
@@ -372,12 +372,12 @@ tether-rally 的架构经历了三个主要阶段：
 2. **三级超时安全模型**：ESP32 端执行分级安全响应（L1 80ms 保持 → L2 250ms 回中 → L3 长期安全停车），不信任网络传入的任何数据。安全逻辑完全在边缘端闭环，即使攻击者控制了浏览器也无法绕过
 3. **稳定性控制链架构**：7 个独立模块串联修改最终油门/转向输出，每个模块可独立开关。展示了车载控制系统的模块化设计 — 控制链输出 = S(C(T(A(H(Surf(Steer(input)))))))，每个模块只修改其关注的维度
 4. **双核实时控制分离**：专门解决了 WebSocket relay 阶段的控制抖动问题（stuttering）。Core 0 专用于网络 I/O，Core 1 运行 200Hz 硬实时控制循环，证明了实时控制需要专用处理线程
-5. **WebSocket relay → WebRTC DataChannel 的架构演进**：控制延迟从 100-200ms 降至 10-15ms（LAN），展示了直连 P2P 对遥操作延迟的决定性改善 — 中继引入的额外延迟可通过 P2P 直接避免
+5. **WebSocket relay → WebRTC RTCDataChannel 的架构演进**：控制延迟从 100-200ms 降至 10-15ms（LAN），展示了直连 P2P 对遥操作延迟的决定性改善 — 中继引入的额外延迟可通过 P2P 直接避免
 
 ## 7. 对 OMSPBase 的参考价值
 ### [Adopt] 可直接借鉴
-- **DataChannel 二进制协议设计**：`seq + cmd + flags + payload` 的紧凑包头格式。OMSPBase 推荐格式：`timestamp(4B) + seq(2B) + cmd(1B) + flags(1B) + payload(N×2B)`，总计 8+N×2 字节
-- **通道分离策略**：四条独立 DataChannel — 控制(unordered)、遥测(unordered)、心跳(unordered)、可靠指令(ordered+reliable)
+- **RTCDataChannel 二进制协议设计**：`seq + cmd + flags + payload` 的紧凑包头格式。OMSPBase 推荐格式：`timestamp(4B) + seq(2B) + cmd(1B) + flags(1B) + payload(N×2B)`，总计 8+N×2 字节
+- **通道分离策略**：四条独立 RTCDataChannel — 控制(unordered)、遥测(unordered)、心跳(unordered)、可靠指令(ordered+reliable)
 - **分级超时安全模型**：L1(80ms 保持) → L2(250ms 回中) → L3(500ms 紧急制动) → L4(2000ms 安全停车) — 作为 teleop SDK 安全基线
 - **边缘端安全执行**：车端验证所有指令，不信任网络数据。OMSPBase 的 Vehicle Agent 应实现 `validateCommand()` 方法，独立于操控站端的 `sanitizeCommand()` 方法
 - **HMAC Token 短期授权**：简单有效的按需接入控制，适合单次遥控会话
@@ -404,11 +404,11 @@ tether-rally 的架构经历了三个主要阶段：
 
 ### [Adopt] 可直接借鉴 (补充)
 
-- **WebSocket → DataChannel 的架构演进路径**：为 OMSPBase 提供了从快速原型到生产部署的明确演进路线。初期使用轻量信令中继快速验证协议设计，稳定后再引入 P2P 直连优化
-- **bufferedAmount 背压管理**：`bufferedAmountLowThreshold` + `onbufferedamountlow` 事件驱动模式是 WebRTC DataChannel 发送端的标准实践。OMSPBase 的 `DataChannelManager` 组件应内置此背压管理逻辑
+- **WebSocket → RTCDataChannel 的架构演进路径**：为 OMSPBase 提供了从快速原型到生产部署的明确演进路线。初期使用轻量信令中继快速验证协议设计，稳定后再引入 P2P 直连优化
+- **bufferedAmount 背压管理**：`bufferedAmountLowThreshold` + `onbufferedamountlow` 事件驱动模式是 WebRTC RTCDataChannel 发送端的标准实践。OMSPBase 的 `DataChannelManager` 组件应内置此背压管理逻辑
 - **ESP32 电源与信号监测**：WiFi RSSI 监测 + 电池 ADC 分压监测提供车端健康状态基本视图。OMSPBase Vehicle Agent 内置 `HealthMonitor` 组件定时上报供电电压和无线信号强度
 - **MCP4728 12-bit DAC 选型**：证明了 12-bit (4096 级) 精度是执行器控制的最低要求，8-bit PWM (256 级) 在转向和油门控制上分辨率严重不足
-- **序列号回绕处理**：`seq.wrapping_sub(last_seq) < 32768` 的模式是 uint16 序列号检测的正确实现，OMSPBase 所有 DataChannel 数据包头部均应采用
+- **序列号回绕处理**：`seq.wrapping_sub(last_seq) < 32768` 的模式是 uint16 序列号检测的正确实现，OMSPBase 所有 RTCDataChannel 数据包头部均应采用
 
 ### [Adapt] 需修改后采用 (补充)
 
@@ -417,25 +417,25 @@ tether-rally 的架构经历了三个主要阶段：
 - **7 种稳定性控制模块 → PluginRegistry 可配置控制链**：当前每个模块硬编码调用顺序。OMSPBase 应实现 `PluginRegistry` 机制，允许通过 YAML/JSON 配置文件动态组装控制链
 - **WiFi UDP 直连 → NetworkHal trait**：OMSPBase Vehicle Agent 需要抽象为 `NetworkHal` trait，支持 WiFi/UART 串口/CAN 总线/Ethernet 多种连接方式
 - **7 字节最小包 → 16 字节扩展包**：增加 timestamp(u32)、flags(u8, 含 emergency bit)、checksum(u8) 字段，形成 16 字节的标准包格式
-- **单视频流 → MultiStreamManager**：OMSPBase 需要管理 3-6 路同步视频流，支持摄像头动态切换（DataChannel 信令触发）
+- **单视频流 → MultiStreamManager**：OMSPBase 需要管理 3-6 路同步视频流，支持摄像头动态切换（RTCDataChannel 信令触发）
 
 ### [Avoid] 已知坑 / 不适用场景 (补充)
 
 - **Cloudflare Workers 生态绑定**：OMSPBase 必须自托管信令服务，不绑定任何特定云厂商，支持多云部署和私有化部署
 - **单玩家架构**：OMSPBase 的多用户场景（操作员 + 监督员 + 观察员）需要不同权限层级设计——操作员完整控制权，监督员可覆盖指令，观察员仅可查看
-- **无 DataChannel 主动 QoS 监测**：未在 DataChannel 上实施主动单向延迟测量和可用带宽估算。OMSPBase 需内置 DataChannel 质量探针
+- **无 RTCDataChannel 主动 QoS 监测**：未在 RTCDataChannel 上实施主动单向延迟测量和可用带宽估算。OMSPBase 需内置 RTCDataChannel 质量探针
 - **ESP32 固件无 OTA**：固件更新需 USB 串口烧录。OMSPBase Vehicle Agent 需内置 OTA 更新机制（支持分片下载 + 校验 + 回滚）
 - **单摄像头局限**：仅单一前向摄像头 + 后置 RTSP PiP。OMSPBase 的车辆遥操作场景需 360° 覆盖——至少前向 + 后向 + 两侧共 4-6 路视频
 - **硬件 BOM 过于定制化**：ARRMA 遥控器 Trainer Port 接口是非常规的 RC 遥控器接口。OMSPBase 应直接通过 CAN/CAN-FD 或工业 PWM 驱动执行器
 - **尾延迟抖动未处理**：仅关注控制延迟均值，未对 P95/P99 尾延迟做针对性优化。OMSPBase 的 jitter buffer 需要遥操作场景专门调优
 
 **总体评分**：★★★☆☆ (3/5)
-— 作为 DataChannel 协议设计和边缘安全架构的参考，价值极高。但项目规模和成熟度有限。其 7 字节二进制协议、三级超时安全模型和稳定性控制链架构是最核心的可借鉴资产。对于 OMSPBase 的生产级 teleop SDK，tether-rally 提供了最佳的最小可行实现参考。
+— 作为 RTCDataChannel 协议设计和边缘安全架构的参考，价值极高。但项目规模和成熟度有限。其 7 字节二进制协议、三级超时安全模型和稳定性控制链架构是最核心的可借鉴资产。对于 OMSPBase 的生产级 teleop SDK，tether-rally 提供了最佳的最小可行实现参考。
 **相关决策**: D117 (紧急停止), D4, D149
 
 
 ## 附录
-### A. DataChannel 控制包二进制格式示例
+### A. RTCDataChannel 控制包二进制格式示例
 ```
 CTRL 命令 (0x01) — 7 字节:
   Byte 0-1: seq (uint16 LE)  — 序列号 0-65535

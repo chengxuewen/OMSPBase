@@ -5,7 +5,7 @@
 
 ## 14.1 概述
 
-omspbase-remote-client 是座舱侧应用程序，从 Server 拉取视频流，解码渲染到屏幕，同时通过 DataChannel 发送控制指令。Remote 只拉流和控制，不推流。
+omspbase-remote-client 是座舱侧应用程序，从 Server 拉取视频流，解码渲染到屏幕，同时通过 RTCDataChannel 发送控制指令。Remote 只拉流和控制，不推流。
 
 ```
 Server (omspbase-server)
@@ -17,7 +17,7 @@ omspbase-remote-client
   │  Signaling Client                          │
   │  axum WS, join room, SDP/ICE 交换          │
   ├────────────────────────────────────────────┤
-  │  Pull Engine (libwebrtc PeerConnection)    │
+  │  Pull Engine (libwebrtc RTCPeerConnection)    │
   │  订阅 Server 转发的 Host 视频流            │
   │  H.264/H.265 RTP stream                    │
   ├────────────────────────────────────────────┤
@@ -30,7 +30,7 @@ omspbase-remote-client
   │  Phase 1: CPU 回读 → Canvas                │
   │  Phase 2: GPU direct (wgpu interop)        │
   ├────────────────────────────────────────────┤
-  │  DataChannel Control                       │
+  │  RTCDataChannel Control                       │
   │  控制指令发送 (转向/刹车/油门)             │
   │  HMAC-SHA256 签名, unordered=0 重传        │
   ├────────────────────────────────────────────┤
@@ -45,10 +45,10 @@ omspbase-remote-client
 | 组件 | 职责 | 决策 |
 |------|------|------|
 | Signaling Client | 连接 Server WS，SDP/ICE 交换，房间管理 | D52, D54 |
-| Pull Engine | libwebrtc PeerConnection 拉流，订阅 Host 视频 | D66, D118 |
+| Pull Engine | libwebrtc RTCPeerConnection 拉流，订阅 Host 视频 | D66, D118 |
 | Decoder | 解码 H.264/H.265 帧。libwebrtc 内置 codec 或 FFmpeg | D70-D72 |
 | Render | 渲染解码后帧到屏幕。Phase 1 CPU 回读，Phase 2 GPU direct | D47 |
-| DataChannel Control | 发送控制指令 (转向/刹车/油门)，HMAC-SHA256 签名 | D66, D117 |
+| RTCDataChannel Control | 发送控制指令 (转向/刹车/油门)，HMAC-SHA256 签名 | D66, D117 |
 | Config | remote.conf (YAML)，只读本地配置 | D80 |
 
 ## 14.3 技术栈
@@ -58,7 +58,7 @@ omspbase-remote-client
 | WebRTC 拉流 | libwebrtc (via webrtc-sys) | 内置 VP8/VP9/H.264 编解码，弱网抗性 |
 | 解码 | libwebrtc 内置 codec (默认) / FFmpeg (str0m 后端) | D70-D72 |
 | 渲染 | CPU 回读 appsink → Canvas (Phase 1) | 极简实现 |
-| 控制 | DataChannel (unordered, maxRetransmits=0) | 低延迟控制指令 |
+| 控制 | RTCDataChannel (unordered, maxRetransmits=0) | 低延迟控制指令 |
 | 签名 | HMAC-SHA256, DTLS-SRTP 派生密钥 | D117 |
 | HTTP | axum 0.7 (/health /ready /metrics) | 与 Server/Host 统一 |
 | 配置 | serde_yaml + env 覆盖 | 全局统一模式 |
@@ -71,7 +71,7 @@ omspbase-remote-client
 Server → WebRTC RTP (H.264/H.265)
   │
   ▼
-libwebrtc PeerConnection (pull)
+libwebrtc RTCPeerConnection (pull)
   │ 解码后帧 (I420/NV12)
   ▼
 Decoder (libwebrtc 内置 / FFmpeg)
@@ -80,7 +80,7 @@ Decoder (libwebrtc 内置 / FFmpeg)
 Render (CPU fallback → GPU direct Phase 2)
   │ 帧显示到窗口
   │
-  ─── DataChannel (控制指令, 反向流向 Host)
+  ─── RTCDataChannel (控制指令, 反向流向 Host)
        steering / brake / throttle
        HMAC-SHA256 signed
 ```
@@ -93,7 +93,7 @@ Render (CPU fallback → GPU direct Phase 2)
 | SDK 形态 | omspbase-remote-client-c (.a + .so + .h) | 直接依赖 Rust crate |
 | 场景 | C/C++ 嵌入 (ROS/自驾/移动端) | 操作员桌面应用 |
 | 解码 | libwebrtc 内置 / FFmpeg | 同 remote |
-| 控制 | DataChannel 控制指令 | 全功能 GUI 操作 |
+| 控制 | RTCDataChannel 控制指令 | 全功能 GUI 操作 |
 | 配置 | remote.conf (只读本地) | GUI 设置面板 |
 
 ## 14.6 平台支持

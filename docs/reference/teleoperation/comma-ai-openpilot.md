@@ -64,16 +64,16 @@
 │  │ │ · 读取硬件 H.264 编码器输出 (文件描述符)             │ │  │
 │  │ │ · 零拷贝注入 WebRTC VideoTrack                     │ │  │
 │  │ │ · 参数: 4 Mbps, GOP=5, 30fps, 720p/1080p          │ │  │
-│  │ │ · 单编码器 — 摄像头通过 DataChannel 切换            │ │  │
+│  │ │ · 单编码器 — 摄像头通过 RTCDataChannel 切换            │ │  │
 │  │ ├────────────────────────────────────────────────────┤ │  │
 │  │ │ CerealOutgoingMessageProxy                        │ │  │
 │  │ │ · 监听 msgq: carState, deviceState, cameraState    │ │  │
 │  │ │ · Cap'n Proto → JSON 转换                          │ │  │
-│  │ │ · DataChannel (dc-out) 广播                        │ │  │
+│  │ │ · RTCDataChannel (dc-out) 广播                        │ │  │
 │  │ │ · carState 20Hz, deviceState 1Hz                   │ │  │
 │  │ ├────────────────────────────────────────────────────┤ │  │
 │  │ │ CerealIncomingMessageProxy                        │ │  │
-│  │ │ · DataChannel (dc-in) 接收 JSON                    │ │  │
+│  │ │ · RTCDataChannel (dc-in) 接收 JSON                    │ │  │
 │  │ │ · JSON → Cap'n Proto → msgq publish                │ │  │
 │  │ │ · 频率: 20-50Hz (testJoystick)                    │ │  │
 │  │ ├────────────────────────────────────────────────────┤ │  │
@@ -90,7 +90,7 @@
 └──────────────────────────────────┬─────────────────────────────┘
                                    │
                                    │ WebRTC P2P (ICE 打洞)
-                                   │ Video + Audio + DataChannel
+                                   │ Video + Audio + RTCDataChannel
                                    │
                                    ▼
 ┌──────────────────────────────────────────────────────────────┐
@@ -108,11 +108,11 @@
 | 能力 | 详情 |
 |------|------|
 | 视频传输延迟 | 依赖 H.264 硬件编码器 + WebRTC 管线（白皮书中未公开 G2G 延迟）。升级后：码率 1 Mbps → 4 Mbps，GOP 15 → 5（关键帧间隔 ~167ms@30fps），帧头 NTP 时间戳注入 |
-| 控制协议 | JSON over WebRTC DataChannel（testJoystick 服务），50ms/20Hz 间隔。内部使用 Cereal/Cap'n Proto 零拷贝序列化（msgq 总线） |
-| DataChannel | 双向 DataChannel（dc-in: 浏览器→设备 / dc-out: 设备→浏览器），JSON 编码，Cereal ↔ JSON 自动桥接 |
+| 控制协议 | JSON over WebRTC RTCDataChannel（testJoystick 服务），50ms/20Hz 间隔。内部使用 Cereal/Cap'n Proto 零拷贝序列化（msgq 总线） |
+| RTCDataChannel | 双向 RTCDataChannel（dc-in: 浏览器→设备 / dc-out: 设备→浏览器），JSON 编码，Cereal ↔ JSON 自动桥接 |
 | 安全冗余 | HTTPS + 自签名证书 + API Token 认证 + 一次性二维码配对。按需连接（非持续监听）。错误分级提示（占用/未启动等） |
-| 编码 | 硬件 H.264 编码器直通（LiveStreamVideoStreamTrack），单编码器架构（多摄像头通过 DataChannel 参数动态切换）。4 Mbps 码率，GOP=5 |
-| 架构分离 | 管理面（athenad, WebSocket + JSON-RPC）/ 数据面（webrtcd, WebRTC + DataChannel）完全独立进程 |
+| 编码 | 硬件 H.264 编码器直通（LiveStreamVideoStreamTrack），单编码器架构（多摄像头通过 RTCDataChannel 参数动态切换）。4 Mbps 码率，GOP=5 |
+| 架构分离 | 管理面（athenad, WebSocket + JSON-RPC）/ 数据面（webrtcd, WebRTC + RTCDataChannel）完全独立进程 |
 | 音频 | 双向 Opus 编码音频通道（WebRTC Audio Track） |
 | 消息系统 | Cereal/Cap'n Proto（零拷贝序列化）+ msgq（发布-订阅模式，多服务） |
 
@@ -129,7 +129,7 @@
 - **音频**：Opus 编码（WebRTC Audio Track，双向）
 - **部署**：comma body/comma three 硬件设备（Qualcomm Snapdragon 845/8cx Gen3），AGNOS 操作系统
 
-### WebRTC PeerConnection 配置详解
+### WebRTC RTCPeerConnection 配置详解
 
 **ICE 配置：** ICE 服务器: `stun:stun.comma.ai:3478`，ICE 传输策略: relay（强制 TURN 中继），TURN 服务器: comma 自托管 coturn
 
@@ -137,17 +137,17 @@
 
 **音频轨道参数：** 编解码器 Opus，采样率 48kHz，单声道/立体声，DTX 启用
 
-**DataChannel 配置：**
+**RTCDataChannel 配置：**
 - dc-in (浏览器 → 设备): `ordered:false, maxRetransmits:0`，JSON 文本，20Hz testJoystick
 - dc-out (设备 → 浏览器): `ordered:false, maxRetransmits:0`，JSON 文本，carState 20Hz + deviceState 1Hz
 
-### DataChannel JSON 协议效率分析
+### RTCDataChannel JSON 协议效率分析
 
 **testJoystick 控制指令 (Browser → Device, 20Hz)：** JSON 包 ~82 字节，有效载荷仅 ~8 字节，JSON 序列化开销约 74 字节（~9.25x 膨胀）。20Hz 下带宽消耗 ~1.6 KB/s（二进制仅 ~160 B/s）
 
 **carState 遥测 (Device → Browser, 20Hz)：** JSON 包 ~256 字节，有效载荷 ~28 字节，JSON 序列化开销约 228 字节（~8.1x 膨胀）。20Hz 下带宽消耗 ~5 KB/s（二进制 ~560 B/s）
 
-**总结**：DataChannel JSON 在 20-50Hz 控制频率下总带宽约 7-10 KB/s，在以下场景成为瓶颈：
+**总结**：RTCDataChannel JSON 在 20-50Hz 控制频率下总带宽约 7-10 KB/s，在以下场景成为瓶颈：
 1. 大规模并发（100+ 车 × 10 KB/s = 1 MB/s 上行带宽）
 2. 低带宽链路（2G EDGE/卫星链路，典型可用带宽 <50 KB/s）
 3. 弱网环境（丢包 5%+ 时，JSON 大包成功传输概率低于小包）
@@ -228,9 +228,9 @@ rlog 录制格式 (Cap'n Proto):
 **webrtcd — WebRTC 网关**
 - **核心职责**：实时媒体流 + 控制数据的远程传输
 - HTTP 服务器（aiohttp, HTTPS + 自签名证书 + CORS），信令端点：`/offer`, `/answer`, `/ice-candidate`
-- LiveStreamVideoStreamTrack：读取硬件 H.264 编码器输出，零拷贝注入 aiortc PeerConnection VideoTrack。参数：4 Mbps, GOP=5, 30fps
-- CerealOutgoingMessageProxy（状态→浏览器）：订阅 msgq 服务，Cap'n Proto → JSON 自动转换，DataChannel (dc-out) 广播（carState 20Hz, deviceState 1Hz）
-- CerealIncomingMessageProxy（浏览器→控制）：接收 DataChannel JSON，JSON → Cap'n Proto → msgq publish（testJoystick 20-50Hz）
+- LiveStreamVideoStreamTrack：读取硬件 H.264 编码器输出，零拷贝注入 aiortc RTCPeerConnection VideoTrack。参数：4 Mbps, GOP=5, 30fps
+- CerealOutgoingMessageProxy（状态→浏览器）：订阅 msgq 服务，Cap'n Proto → JSON 自动转换，RTCDataChannel (dc-out) 广播（carState 20Hz, deviceState 1Hz）
+- CerealIncomingMessageProxy（浏览器→控制）：接收 RTCDataChannel JSON，JSON → Cap'n Proto → msgq publish（testJoystick 20-50Hz）
 - 双向 Opus 音频通道
 - 错误处理：明确告知用户连接失败原因
 
@@ -247,11 +247,11 @@ rlog 录制格式 (Cap'n Proto):
 
 ### 特色功能
 - **Cereal/Cap'n Proto 零拷贝序列化**：比 Protobuf 更高效 — 无需解析/拷贝即可读取字段，适合 100Hz+ 传感器数据
-- **WebRTC DataChannel 双向桥接模式**：将内部 msgq 消息总线透明延伸到远程浏览器，Cereal ↔ JSON 自动转换
+- **WebRTC RTCDataChannel 双向桥接模式**：将内部 msgq 消息总线透明延伸到远程浏览器，Cereal ↔ JSON 自动转换
 - **athenad + webrtcd 分离架构**：管理面（WebSocket + JSON-RPC）与数据面（WebRTC）独立守护进程，借鉴网络设备控制面/转发面分离
 - **硬件编码器直通 WebRTC**：直接读取硬件编码的字节流注入 VideoTrack，节省 30-60ms 软件编解码开销
 - **GOP 动态优化（15 → 5）**：关键帧间隔从 ~500ms 降至 ~167ms，大幅降低首帧延迟和丢包恢复时间
-- **摄像头动态切换**：单编码器架构，通过 DataChannel 信令在运行时切换摄像头源
+- **摄像头动态切换**：单编码器架构，通过 RTCDataChannel 信令在运行时切换摄像头源
 
 ### 扩展性
 - 300+ 车型兼容（通过车型特定的 car harness 和参数配置）
@@ -269,7 +269,7 @@ rlog 录制格式 (Cap'n Proto):
   - athenad JSON-RPC API 参考 + 开发工具链（PlotJuggler、cabana、replay）
   - 日志分析平台（my.comma.ai/useradmin）：上传驾驶日志后可在线分析和可视化
 - **已知缺陷或限制**：
-  - DataChannel JSON 序列化效率低：50Hz testJoystick JSON ~80 字节 vs 二进制 7 字节，差距约 11x
+  - RTCDataChannel JSON 序列化效率低：50Hz testJoystick JSON ~80 字节 vs 二进制 7 字节，差距约 11x
   - aiortc WebRTC 实现与浏览器兼容性需持续维护
   - 单编码器架构下摄像头切换需重新初始化 VideoTrack（~1-2s），多摄像头同时流送不支持
   - comma body 遥操作主要针对室内/低速（<5 m/s）机器人，非高速遥控驾驶
@@ -285,7 +285,7 @@ rlog 录制格式 (Cap'n Proto):
 | 0.8.x | 2021 | 初始 athenad 设备管理通道 | 建立了设备-云通信基础设施 |
 | 0.9.0 | 2022 | comma body 平台首次发布 | 引入机器人远程操控需求 |
 | 0.9.2 | 2023 | webrtcd 初始版本 (aiortc) | 首次在 openpilot 中加入 WebRTC |
-| 0.9.4 | 2024 | testJoystick DataChannel 控制 | 双向 DataChannel 桥接功能上线 |
+| 0.9.4 | 2024 | testJoystick RTCDataChannel 控制 | 双向 RTCDataChannel 桥接功能上线 |
 | 0.9.5 | 2024 | 视频码率 1M → 2M, GOP 15 | 初步的视频质量优化 |
 | 0.9.6 | 2025 | GOP 15 → 5, 码率 2M → 4M | PR #37732 重大升级 |
 | 0.9.7 | 2025 | teleoprtc 分离 | WebRTC 代码独立为 teleoprtc 库 |
@@ -321,7 +321,7 @@ rlog 录制格式 (Cap'n Proto):
 ### 已知问题与改进方向
 
 1. **云强依赖**：athenad 必须通过 comma 云服务器访问设备，局域网直连不支持。OMSPBase 必须支持离线/局域网模式作为第一设计约束
-2. **DataChannel JSON 低效**：50Hz testJoystick JSON 比二进制浪费约 11x 带宽
+2. **RTCDataChannel JSON 低效**：50Hz testJoystick JSON 比二进制浪费约 11x 带宽
 3. **自签名证书安全风险**：HTTPS 自签名证书在非浏览器场景有中间人攻击风险。OMSPBase 生产部署应使用 Let's Encrypt 或企业 CA
 4. **无安全模块**：无超时安全停车、无安全边界校验、无 MRM 机制
 5. **aiortc 兼容性维护**：Python asyncio + aiortc 的 WebRTC 实现与浏览器端兼容性需持续测试
@@ -347,7 +347,7 @@ rlog 录制格式 (Cap'n Proto):
 - **定价 / 许可**：MIT 开源许可（软件免费），硬件售价 comma three X 约 $1,250，comma body 约 $1,999
 
 ## 6. 产品特色
-1. **最大规模 WebRTC 遥操作生产部署**：63K+ GitHub Stars、300+ 车型支持，openpilot 的 WebRTC 遥操作组件经过了最大规模的实际使用验证，是 WebRTC DataChannel 在遥操作场景中最成熟的开源实践
+1. **最大规模 WebRTC 遥操作生产部署**：63K+ GitHub Stars、300+ 车型支持，openpilot 的 WebRTC 遥操作组件经过了最大规模的实际使用验证，是 WebRTC RTCDataChannel 在遥操作场景中最成熟的开源实践
 2. **Cereal/Cap'n Proto 零拷贝序列化**：比 Protobuf 更高效 — 零拷贝读取字段（无需反序列化整个结构），适合 100Hz+ 高频传感器数据（LiDAR 点云/IMU/摄像头帧）
 3. **管理面与数据面完全分离**：athenad（WebSocket + JSON-RPC）与 webrtcd（WebRTC）独立进程 — 借鉴网络设备控制面/转发面经典架构，故障隔离 + 独立扩展
 4. **硬件编码器直通 WebRTC**：`LiveStreamVideoStreamTrack` 直接读取硬件 H.264 字节流注入 RTCPeerConnection，避免解码→重编码完整往返，节省 30-60ms 编码开销和 CPU 资源
@@ -355,7 +355,7 @@ rlog 录制格式 (Cap'n Proto):
 
 ## 7. 对 OMSPBase 的参考价值
 ### [Adopt] 可直接借鉴
-- **WebRTC DataChannel 双向桥接模式**：将内部消息总线透明延伸到远程 DataChannel，类似 CerealOutgoingProxy/CerealIncomingProxy 的设计。双向数据通道各一条独立 DataChannel
+- **WebRTC RTCDataChannel 双向桥接模式**：将内部消息总线透明延伸到远程 RTCDataChannel，类似 CerealOutgoingProxy/CerealIncomingProxy 的设计。双向数据通道各一条独立 RTCDataChannel
 - **管理面与数据面分离**：OMSPBase 的信令服务与 teleop SDK 数据面应采用独立模块，类似 athenad/webrtcd 的分工
 - **硬件编码器直通 WebRTC**：OMSPBase 的 `HardwareEncoder` 插件输出应可直接注入 WebRTC VideoTrack，实现零拷贝编码→传输管道
 - **GOP ≤ 5 作为遥操作编码基准**：关键帧间隔 ≤ 200ms 应作为 OMSPBase 遥操作视频编码的默认配置
@@ -365,12 +365,12 @@ rlog 录制格式 (Cap'n Proto):
 ### [Adapt] 需修改后采用
 - **Cereal/Cap'n Proto → FlatBuffers 消息总线映射**：OMSPBase 使用 FlatBuffers，需实现类似 msgq 的 pub-sub 机制
 - **athenad 云管理模式 → OMSPBase 信令服务**：借鉴设备管理/配对/Token 认证，但必须支持局域网直连模式（无云依赖）
-- **DataChannel JSON → 二进制协议**：OMSPBase 必须采用全二进制 DataChannel 协议（参考 tether-rally），绝不在控制通道上使用 JSON
+- **RTCDataChannel JSON → 二进制协议**：OMSPBase 必须采用全二进制 RTCDataChannel 协议（参考 tether-rally），绝不在控制通道上使用 JSON
 - **二维码配对 → 操作员认证**：一次性二维码配对流程可用于初步设备-操作员关联，但需增加企业级认证（LDAP/RBAC）
 - **Python webrtcd → Rust webrtcd 实现**：需将 `webrtcd` 架构映射到 Rust + webrtc-rs/str0m。实现 Rust 版 `VideoTrackAdapter` 和 `MessageProxy`
 
 ### [Avoid] 已知坑 / 不适用场景
-- **DataChannel JSON 序列化效率极低**：openpilot 的 testJoystick JSON 包在 50Hz 下比二进制浪费约 11x 带宽。OMSPBase 必须从架构设计初期就采用二进制协议
+- **RTCDataChannel JSON 序列化效率极低**：openpilot 的 testJoystick JSON 包在 50Hz 下比二进制浪费约 11x 带宽。OMSPBase 必须从架构设计初期就采用二进制协议
 - **aiortc 兼容性维护成本**：OMSPBase 使用 Rust webrtc-rs/str0m（sans-I/O 设计）可更好地控制兼容性
 - **单编码器局限**：多摄像头同时流送场景下不适用。OMSPBase 需要支持多编码器并行或硬件 SVC
 - **自签名证书不适合生产**：OMSPBase 生产部署应使用 Let's Encrypt 或企业 CA 证书
@@ -381,11 +381,11 @@ rlog 录制格式 (Cap'n Proto):
 
 ### [Adopt] 可直接借鉴 (补充)
 
-- **athenad/webrtcd 控制面与数据面完全分离**：管理通道（WebSocket + JSON-RPC）与实时数据通道（WebRTC + DataChannel）使用独立守护进程。OMSPBase 的 `SignalingService` 和 `TeleopPeerConnection` 应采用独立的进程/线程运行
+- **athenad/webrtcd 控制面与数据面完全分离**：管理通道（WebSocket + JSON-RPC）与实时数据通道（WebRTC + RTCDataChannel）使用独立守护进程。OMSPBase 的 `SignalingService` 和 `TeleopPeerConnection` 应采用独立的进程/线程运行
 - **LiveStreamVideoStreamTrack 零拷贝设计**：直接从硬件编码器 FD 读取 H.264 字节流注入 VideoTrack。OMSPBase 的 `HardwareEncoderPlugin` 应实现同样的 `VideoSource` trait
 - **GOP=5 作为遥操作编码基准配置**：PR #37732 将 GOP 从 15 降至 5（~500ms → ~167ms）。OMSPBase 默认配置：GOP=5（基础），GOP=1（安全模式），GOP=15（低带宽模式）
 - **4 Mbps H.264 720p 作为室内/低速机器人推荐配置**：码率 4Mbps、720p、30fps 是低速场景下视频质量与带宽的均衡配置
-- **单编码器 + 动态摄像头切换架构**：通过 DataChannel 信令在运行时切换摄像头源，比维护多个并发编码器更高效
+- **单编码器 + 动态摄像头切换架构**：通过 RTCDataChannel 信令在运行时切换摄像头源，比维护多个并发编码器更高效
 - **testJoystick 服务模式**：20-50Hz 控制频率 + 键盘/WASD + Gamepad API 作为低速遥操作的标准 UI 模式
 
 ### [Adapt] 需修改后采用 (补充)
@@ -394,11 +394,11 @@ rlog 录制格式 (Cap'n Proto):
 - **athenad 云管理模式 → 信令服务支持 P2P 直连+云辅助**：同时支持 LAN 直连模式（同一局域网内无需云服务器）和云辅助模式（跨 NAT 通过 TURN 中继）
 - **二维码配对 → 企业级认证**：支持 LDAP/RBAC/OAuth2 等认证方式，`AuthProvider` trait 允许替换认证策略
 - **aiortc Python → Rust webrtc-rs/str0m**：Rust 实现提供更低延迟、更好内存安全和更小二进制体积。`WebRtcPeer` 组件封装 Sans-I/O 状态机设计
-- **CerealOutgoingProxy → FlatBuffersOutgoingProxy**：直接发送二进制 payload 到 DataChannel，跳过 Cap'n Proto → JSON 转换开销
+- **CerealOutgoingProxy → FlatBuffersOutgoingProxy**：直接发送二进制 payload 到 RTCDataChannel，跳过 Cap'n Proto → JSON 转换开销
 
 ### [Avoid] 已知坑 / 不适用场景 (补充)
 
-- **DataChannel JSON 序列化不可用于生产级遥操作**：OMSPBase 必须从第一天就采用全二进制 DataChannel 协议
+- **RTCDataChannel JSON 序列化不可用于生产级遥操作**：OMSPBase 必须从第一天就采用全二进制 RTCDataChannel 协议
 - **自签名证书不适合生产部署**：必须使用可信 CA 签发的证书（Let's Encrypt / ZeroSSL / 企业 CA）
 - **athenad 云强依赖是致命架构缺陷**：必须支持完全离线/局域网模式，云仅作为辅助角色
 - **comma body 低速场景经验不能直接迁移到高速车辆**：高速遥操作（>30 km/h）需要 GOP=1、SVC、多重冗余和多级安全机制
@@ -435,7 +435,7 @@ rlog 录制格式 (Cap'n Proto):
 
 
 ## 附录
-### A. webrtcd DataChannel 桥接代码模式 (Python → Rust 映射)
+### A. webrtcd RTCDataChannel 桥接代码模式 (Python → Rust 映射)
 ```python
 # Python (webrtcd CerealOutgoingMessageProxy — 状态 → 浏览器)
 class CerealOutgoingMessageProxy:
@@ -454,7 +454,7 @@ class CerealOutgoingMessageProxy:
 ```
 
 ```rust
-// Rust (OMSPBase MessageProxy — FlatBuffers → DataChannel)
+// Rust (OMSPBase MessageProxy — FlatBuffers → RTCDataChannel)
 struct FlatBuffersOutgoingProxy {
     dc_out: DataChannelSender,
     subscriptions: Vec<Subscription>,

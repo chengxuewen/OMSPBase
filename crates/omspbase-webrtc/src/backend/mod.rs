@@ -4,67 +4,83 @@
 //! and compile-time type alias dispatch via cfg gates.
 //! Zero dyn overhead — all dispatch is monomorphized.
 
-use crate::channel::{DataChannel, DataChannelRx, DataChannelState};
-use crate::peer::{AnswerOptions, IceCandidate, OfferOptions, IceConnectionState, IceGatheringState, PeerConnectionState, SignalingState};
-use crate::sdp::SessionDescription;
-use crate::stats::RtcStats;
-use crate::track::{AudioTrackConfig, TrackKind, TrackReceiver};
-use crate::RtcError;
+use crate::channel::{RTCDataChannel, RTCDataChannelRx, RTCDataChannelState};
+use crate::peer::{RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions, RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState};
+use crate::sdp::RTCSessionDescription;
+use crate::stats::RTCStats;
+use crate::track::{RTCAudioTrackConfig, TrackKind, TrackReceiver};
+use crate::RTCError;
 
 // ── Traits ──
 
 pub(crate) trait PcBackend: Send + Sync + 'static {
-    async fn create_offer(&self, options: &OfferOptions) -> Result<SessionDescription, RtcError>;
-    async fn create_answer(&self, options: &AnswerOptions) -> Result<SessionDescription, RtcError>;
-    async fn set_local_description(&self, desc: &SessionDescription) -> Result<(), RtcError>;
-    async fn set_remote_description(&self, desc: &SessionDescription) -> Result<(), RtcError>;
-    async fn add_ice_candidate(&self, candidate: &IceCandidate) -> Result<(), RtcError>;
-    fn connection_state(&self) -> PeerConnectionState;
-    fn ice_connection_state(&self) -> IceConnectionState;
-    fn ice_gathering_state(&self) -> IceGatheringState;
-    fn signaling_state(&self) -> SignalingState;
+    async fn create_offer(&self, options: &RTCOfferOptions) -> Result<RTCSessionDescription, RTCError>;
+    async fn create_answer(&self, options: &RTCAnswerOptions) -> Result<RTCSessionDescription, RTCError>;
+    async fn set_local_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError>;
+    async fn set_remote_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError>;
+    async fn add_ice_candidate(&self, candidate: &RTCIceCandidate) -> Result<(), RTCError>;
+    fn connection_state(&self) -> RTCPeerConnectionState;
+    fn ice_connection_state(&self) -> RTCIceConnectionState;
+    fn ice_gathering_state(&self) -> RTCIceGatheringState;
+    fn signaling_state(&self) -> RTCSignalingState;
     async fn close(&self);
 
     // ── Default methods (no-op for backends that skip these) ──
 
     /// Register callback for incoming data channels (receiver side).
-    fn set_on_data_channel(&self, _cb: Box<dyn Fn(DataChannel) + Send + Sync + 'static>) {}
+    fn set_on_data_channel(&self, _cb: Box<dyn Fn(RTCDataChannel) + Send + Sync + 'static>) {}
 
     /// Register callback for incoming remote tracks (receiver side).
     fn set_on_track(&self, _cb: Box<dyn Fn(TrackReceiver) + Send + Sync + 'static>) {}
 
     /// Wait until ICE gathering is complete.
-    fn gather_complete(&self) -> Result<(), RtcError> {
+    fn gather_complete(&self) -> Result<(), RTCError> {
         Ok(())
     }
 
     /// Get structured statistics.
-    fn get_stats(&self) -> Vec<RtcStats> {
+    fn get_stats(&self) -> Vec<RTCStats> {
         vec![]
     }
 
     /// Add an RTP transceiver for a media type with a given direction.
     // ponytail: String params until enums are justified.
-    fn add_transceiver(&self, _media_type: &str, _direction: &str) -> Result<(), RtcError> {
-        Err(RtcError::Internal("not supported".into()))
+    fn add_transceiver(&self, _media_type: &str, _direction: &str) -> Result<(), RTCError> {
+        Err(RTCError::Internal("not supported".into()))
+    }
+
+    /// Register a local track with the RTCPeerConnection for RTP transmission.
+    /// Backends that support track registration (webrtc-sys) call into
+    /// libwebrtc to activate the track. Other backends store in the wrapper.
+    fn register_track(
+        &self, _track_id: &str, _kind: TrackKind,
+    ) -> Result<(), RTCError> {
+        Ok(())
+    }
+
+    /// Register callback for ICE candidates generated locally.
+    /// Called with (sdp_mid, sdp_mline_index, candidate_string).
+    fn set_on_ice_candidate(
+        &self, _cb: Box<dyn Fn(String, i32, String) + Send + Sync + 'static>,
+    ) {
     }
 }
 
 pub(crate) trait DcBackend: Send + Sync + 'static {
-    fn state(&self) -> DataChannelState;
-    async fn send(&self, data: &[u8]) -> Result<(), RtcError>;
-    async fn send_text(&self, text: &str) -> Result<(), RtcError>;
-    async fn spool(&self) -> DataChannelRx;
+    fn state(&self) -> RTCDataChannelState;
+    async fn send(&self, data: &[u8]) -> Result<(), RTCError>;
+    async fn send_text(&self, text: &str) -> Result<(), RTCError>;
+    async fn spool(&self) -> RTCDataChannelRx;
     async fn close(&mut self);
 }
 
-pub(crate) trait TrackWriteBackend: Send + Sync + 'static {
+pub trait TrackWriteBackend: Send + Sync + 'static {
     async fn write_frame(
         &self,
         data: &[u8],
         kind: TrackKind,
-        audio_config: Option<&AudioTrackConfig>,
-    ) -> Result<(), RtcError>;
+        audio_config: Option<&RTCAudioTrackConfig>,
+    ) -> Result<(), RTCError>;
 
     /// Write a raw I420 (YUV 4:2:0 planar) frame to the video track.
     /// The backend handles encoding (webrtc-sys) or no-ops (stub).
@@ -72,7 +88,7 @@ pub(crate) trait TrackWriteBackend: Send + Sync + 'static {
     /// `data` layout: Y plane (w*h) + U plane (w*h/4) + V plane (w*h/4).
     async fn write_raw_i420(
         &self, _data: &[u8], _width: u32, _height: u32,
-    ) -> Result<(), RtcError> {
+    ) -> Result<(), RTCError> {
         // Default: no-op for backends that don't support raw I420
         Ok(())
     }
@@ -90,16 +106,16 @@ pub(crate) mod stub;
 #[cfg(feature = "backend-webrtc-rs")]
 pub(crate) mod webrtc_rs;
 #[cfg(feature = "backend-webrtc-sys")]
-pub(crate) mod webrtc_sys;
-
+pub mod webrtc_sys;
+#[cfg(not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys")))]
 // ── Type alias dispatch (compile-time, monomorphized) ──
 
 #[cfg(feature = "backend-webrtc-rs")]
-pub(crate) type ActivePc = webrtc_rs::WebrtcRsPc;
+pub type ActivePc = webrtc_rs::WebrtcRsPc;
 #[cfg(feature = "backend-webrtc-sys")]
-pub(crate) type ActivePc = webrtc_sys::WebrtcSysPc;
+pub type ActivePc = webrtc_sys::WebrtcSysPc;
 #[cfg(not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys")))]
-pub(crate) type ActivePc = stub::StubPc;
+pub type ActivePc = stub::StubPc;
 
 #[cfg(feature = "backend-webrtc-rs")]
 pub(crate) type ActiveDc = webrtc_rs::WebrtcRsDc;
@@ -109,15 +125,15 @@ pub(crate) type ActiveDc = webrtc_sys::WebrtcSysDc;
 pub(crate) type ActiveDc = stub::StubDc;
 
 #[cfg(feature = "backend-webrtc-rs")]
-pub(crate) type ActiveTrack = webrtc_rs::WebrtcRsTrack;
+pub type ActiveTrack = webrtc_rs::WebrtcRsTrack;
 #[cfg(feature = "backend-webrtc-sys")]
-pub(crate) type ActiveTrack = webrtc_sys::WebrtcSysTrack;
+pub type ActiveTrack = webrtc_sys::WebrtcSysTrack;
 #[cfg(not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys")))]
-pub(crate) type ActiveTrack = stub::StubTrack;
+pub type ActiveTrack = stub::StubTrack;
 
 #[cfg(feature = "backend-webrtc-rs")]
 pub(crate) type ActiveFactory = webrtc_rs::WebrtcRsFactory;
 #[cfg(feature = "backend-webrtc-sys")]
-pub(crate) type ActiveFactory = webrtc_sys::WebrtcSysFactory;
+pub type ActiveFactory = webrtc_sys::WebrtcSysFactory;
 #[cfg(not(any(feature = "backend-webrtc-rs", feature = "backend-webrtc-sys")))]
 pub(crate) type ActiveFactory = stub::StubFactory;

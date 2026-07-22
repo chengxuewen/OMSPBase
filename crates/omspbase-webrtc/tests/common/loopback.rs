@@ -1,15 +1,15 @@
 //! Loopback test harness — in-process SDP/ICE exchange between two PeerConnections.
 //!
-//! Provides helpers to create a connected PeerConnection pair
+//! Provides helpers to create a connected RTCPeerConnection pair
 //! without a signaling server, plus a FPS counter and test-frame generator.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use omspbase_webrtc::peer::{
-    AnswerOptions, OfferOptions, PcConfig, PeerConnectionFactory,
+    RTCAnswerOptions, RTCOfferOptions, RTCConfiguration, RTCPeerConnectionFactory,
 };
-use omspbase_webrtc::RtcError;
+use omspbase_webrtc::RTCError;
 
 /// FPS counter — tracks frame count over time.
 ///
@@ -56,18 +56,18 @@ impl FpsCounter {
 /// sufficient for stub backend and in-process loopback testing.
 ///
 /// # Errors
-/// Returns `RtcError` if any SDP operation fails.
+/// Returns `RTCError` if any SDP operation fails.
 pub async fn exchange_sdp(
-    pc1: &omspbase_webrtc::peer::PeerConnection,
-    pc2: &omspbase_webrtc::peer::PeerConnection,
-) -> Result<(), RtcError> {
+    pc1: &omspbase_webrtc::peer::RTCPeerConnection,
+    pc2: &omspbase_webrtc::peer::RTCPeerConnection,
+) -> Result<(), RTCError> {
     // 1. PC1 creates offer
-    let offer = pc1.create_offer(&OfferOptions::default()).await?;
+    let offer = pc1.create_offer(&RTCOfferOptions::default()).await?;
     pc1.set_local_description(&offer).await?;
 
     // 2. PC2 receives offer, creates answer
     pc2.set_remote_description(&offer).await?;
-    let answer = pc2.create_answer(&AnswerOptions::default()).await?;
+    let answer = pc2.create_answer(&RTCAnswerOptions::default()).await?;
     pc2.set_local_description(&answer).await?;
 
     // 3. PC1 receives answer
@@ -79,24 +79,24 @@ pub async fn exchange_sdp(
 /// Create a pair of PeerConnections with SDP already exchanged.
 ///
 /// Uses the active backend (default: `backend-webrtc-sys`).
-/// Both PCs share the same `PeerConnectionFactory`.
+/// Both PCs share the same `RTCPeerConnectionFactory`.
 ///
 /// # Panics
 /// If SDP exchange fails, this function panics.
 pub async fn create_connected_pair(
 ) -> Result<
     (
-        omspbase_webrtc::peer::PeerConnection,
-        omspbase_webrtc::peer::PeerConnection,
+        omspbase_webrtc::peer::RTCPeerConnection,
+        omspbase_webrtc::peer::RTCPeerConnection,
     ),
-    RtcError,
+    RTCError,
 > {
-    let factory = PeerConnectionFactory::new();
+    let factory = RTCPeerConnectionFactory::new();
     let pc1 = factory
-        .create_peer_connection(PcConfig::default())
+        .create_peer_connection(RTCConfiguration::default())
         .await?;
     let pc2 = factory
-        .create_peer_connection(PcConfig::default())
+        .create_peer_connection(RTCConfiguration::default())
         .await?;
 
     exchange_sdp(&pc1, &pc2).await?;

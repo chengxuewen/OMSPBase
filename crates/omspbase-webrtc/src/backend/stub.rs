@@ -4,14 +4,14 @@
 use super::DcBackend;
 use super::PcBackend;
 use super::TrackWriteBackend;
-use crate::channel::{DataChannel, DataChannelInit, DataChannelRx, DataChannelState};
+use crate::channel::{RTCDataChannel, RTCDataChannelInit, RTCDataChannelRx, RTCDataChannelState};
 use crate::peer::{
-    AnswerOptions, IceCandidate, OfferOptions, PcConfig,
-    IceConnectionState, IceGatheringState, PeerConnectionState, SignalingState,
+    RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions, RTCConfiguration,
+    RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState,
 };
-use crate::sdp::{SdpType, SessionDescription};
-use crate::track::{AudioTrackConfig, TrackKind};
-use crate::RtcError;
+use crate::sdp::{RTCSdpType, RTCSessionDescription};
+use crate::track::{RTCAudioTrackConfig, TrackKind};
+use crate::RTCError;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // ── StubPc ──
@@ -22,51 +22,51 @@ pub(crate) struct StubPc {
 }
 
 impl PcBackend for StubPc {
-    async fn create_offer(&self, _: &OfferOptions) -> Result<SessionDescription, RtcError> {
-        Ok(SessionDescription::new(SdpType::Offer, String::new()))
+    async fn create_offer(&self, _: &RTCOfferOptions) -> Result<RTCSessionDescription, RTCError> {
+        Ok(RTCSessionDescription::new(RTCSdpType::Offer, String::new()))
     }
 
-    async fn create_answer(&self, _: &AnswerOptions) -> Result<SessionDescription, RtcError> {
-        Ok(SessionDescription::new(SdpType::Answer, String::new()))
+    async fn create_answer(&self, _: &RTCAnswerOptions) -> Result<RTCSessionDescription, RTCError> {
+        Ok(RTCSessionDescription::new(RTCSdpType::Answer, String::new()))
     }
 
-    async fn set_local_description(&self, _: &SessionDescription) -> Result<(), RtcError> {
+    async fn set_local_description(&self, _: &RTCSessionDescription) -> Result<(), RTCError> {
         Ok(())
     }
 
-    async fn set_remote_description(&self, _: &SessionDescription) -> Result<(), RtcError> {
+    async fn set_remote_description(&self, _: &RTCSessionDescription) -> Result<(), RTCError> {
         Ok(())
     }
 
-    async fn add_ice_candidate(&self, _: &IceCandidate) -> Result<(), RtcError> {
+    async fn add_ice_candidate(&self, _: &RTCIceCandidate) -> Result<(), RTCError> {
         Ok(())
     }
 
-    fn connection_state(&self) -> PeerConnectionState {
+    fn connection_state(&self) -> RTCPeerConnectionState {
         if self.closed.load(Ordering::Relaxed) {
-            PeerConnectionState::Closed
+            RTCPeerConnectionState::Closed
         } else {
-            PeerConnectionState::New
+            RTCPeerConnectionState::New
         }
     }
 
-    fn ice_connection_state(&self) -> IceConnectionState {
+    fn ice_connection_state(&self) -> RTCIceConnectionState {
         if self.closed.load(Ordering::Relaxed) {
-            IceConnectionState::Closed
+            RTCIceConnectionState::Closed
         } else {
-            IceConnectionState::New
+            RTCIceConnectionState::New
         }
     }
 
-    fn ice_gathering_state(&self) -> IceGatheringState {
-        IceGatheringState::New
+    fn ice_gathering_state(&self) -> RTCIceGatheringState {
+        RTCIceGatheringState::New
     }
 
-    fn signaling_state(&self) -> SignalingState {
+    fn signaling_state(&self) -> RTCSignalingState {
         if self.closed.load(Ordering::Relaxed) {
-            SignalingState::Closed
+            RTCSignalingState::Closed
         } else {
-            SignalingState::Stable
+            RTCSignalingState::Stable
         }
     }
 
@@ -89,9 +89,9 @@ impl StubPc {
     pub(crate) async fn create_data_channel(
         &self,
         label: &str,
-        _init: DataChannelInit,
-    ) -> Result<DataChannel, RtcError> {
-        Ok(DataChannel {
+        _init: RTCDataChannelInit,
+    ) -> Result<RTCDataChannel, RTCError> {
+        Ok(RTCDataChannel {
             label: label.to_string(),
             id: 0,
             backend: StubDc,
@@ -105,20 +105,20 @@ impl StubPc {
 pub(crate) struct StubDc;
 
 impl DcBackend for StubDc {
-    fn state(&self) -> DataChannelState {
-        DataChannelState::Closed
+    fn state(&self) -> RTCDataChannelState {
+        RTCDataChannelState::Closed
     }
 
-    async fn send(&self, _: &[u8]) -> Result<(), RtcError> {
+    async fn send(&self, _: &[u8]) -> Result<(), RTCError> {
         Ok(())
     }
 
-    async fn send_text(&self, _: &str) -> Result<(), RtcError> {
+    async fn send_text(&self, _: &str) -> Result<(), RTCError> {
         Ok(())
     }
 
-    async fn spool(&self) -> DataChannelRx {
-        DataChannelRx::stub()
+    async fn spool(&self) -> RTCDataChannelRx {
+        RTCDataChannelRx::stub()
     }
 
     async fn close(&mut self) {}
@@ -134,8 +134,8 @@ impl TrackWriteBackend for StubTrack {
         &self,
         data: &[u8],
         _kind: TrackKind,
-        _audio_config: Option<&AudioTrackConfig>,
-    ) -> Result<(), RtcError> {
+        _audio_config: Option<&RTCAudioTrackConfig>,
+    ) -> Result<(), RTCError> {
         tracing::debug!("TrackSender::write_frame (stub): {} bytes", data.len());
         Ok(())
     }
@@ -149,9 +149,9 @@ pub(crate) struct StubFactory;
 impl StubFactory {
     pub(crate) async fn create_peer_connection(
         &self,
-        _config: PcConfig,
-    ) -> Result<StubPc, RtcError> {
-        tracing::info!("Creating PeerConnection (stub)");
+        _config: RTCConfiguration,
+    ) -> Result<StubPc, RTCError> {
+        tracing::info!("Creating RTCPeerConnection (stub)");
         Ok(StubPc::default())
     }
 }

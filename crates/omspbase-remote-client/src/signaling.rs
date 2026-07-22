@@ -155,7 +155,7 @@ impl SignalingClient {
                             match serde_json::from_str::<SignalingMessage>(&text) {
                                 Ok(SignalingMessage::Sdp { sdp, room_id, .. }) => {
                                     // ponytail: only process SDP offers; ignore answer echoes
-                                    let sdp_parsed: omspbase_webrtc::SessionDescription =
+                                    let sdp_parsed: omspbase_webrtc::RTCSessionDescription =
                                         match serde_json::from_str(&sdp) {
                                             Ok(d) => d,
                                             Err(e) => {
@@ -163,7 +163,7 @@ impl SignalingClient {
                                                 continue;
                                             }
                                         };
-                                    if sdp_parsed.sdp_type != omspbase_webrtc::SdpType::Offer {
+                                    if sdp_parsed.sdp_type != omspbase_webrtc::RTCSdpType::Offer {
                                         tracing::debug!("Signaling: ignoring non-offer SDP ({})", sdp_parsed.sdp_type);
                                         continue;
                                     }
@@ -187,7 +187,7 @@ impl SignalingClient {
                                         }
                                     }
                                 }
-                                Ok(SignalingMessage::IceCandidate { candidate, sdp_mid, sdp_mline_index, .. }) => {
+                                Ok(SignalingMessage::RTCIceCandidate { candidate, sdp_mid, sdp_mline_index, .. }) => {
                                     tracing::debug!("Signaling: received ICE candidate");
                                     let init_json = serde_json::json!({
                                         "candidate": candidate,
@@ -286,7 +286,7 @@ impl SignalingClient {
                                     .get("sdpMLineIndex")
                                     .and_then(|v| v.as_u64())
                                     .map(|n| n as u16);
-                                let ice_msg = SignalingMessage::IceCandidate {
+                                let ice_msg = SignalingMessage::RTCIceCandidate {
                                     room_id: self.room_id.clone(),
                                     target: None,
                                     candidate: candidate.to_string(),

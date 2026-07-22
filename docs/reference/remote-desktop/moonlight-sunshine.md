@@ -346,7 +346,7 @@
 - **GameStream 固定六端口 → OMSPBase 多路复用为 1-2 个端口**：
   - 信令 + 配对 + 流控制合并为一个 WebSocket 连接（SDP/ICE 协商复用）
   - 视频 RTP + 音频 RTP 改为 WebRTC 的媒体轨道（同端口多路复用）
-  - 输入控制 ENet 改为 WebRTC DataChannel（无序模式 + maxRetransmits=0 等效于低延迟可靠通道）
+  - 输入控制 ENet 改为 WebRTC RTCDataChannel（无序模式 + maxRetransmits=0 等效于低延迟可靠通道）
 - **RTSP + SDP 固定消息格式 → WebRTC SDP 协商**：更灵活、可扩展性更强、支持更多动态参数（simulcast/SVC 等）
 - **LAN-only 设计（无 NAT 穿透）→ ICE/STUN/TURN 标准协议族**：
   - OMSPBase 需要支持 WAN 场景（远程办公、车端→云端）
@@ -374,7 +374,7 @@
 | RTSP (流控制) | SDP Offer/Answer | WebRTC SDP比RTSP更灵活，支持Simulcast/SVC |
 | RTP视频 | RTP视频（同一端口） | WebRTC内置RTP/RTCP+带宽估计+拥塞控制 |
 | RTP音频 | RTP音频（同一端口） | WebRTC同一端口多路复用音视频 |
-| ENet (输入控制) | DataChannel（无序模式） | WebRTC DataChannel通过SCTP over DTLS，maxRetransmits=0等效ENet低延迟 |
+| ENet (输入控制) | RTCDataChannel（无序模式） | WebRTC RTCDataChannel通过SCTP over DTLS，maxRetransmits=0等效ENet低延迟 |
 
 WebRTC的优势：
 - 端口降维：6个端口至1-2个端口，在企业防火墙中存活率极高

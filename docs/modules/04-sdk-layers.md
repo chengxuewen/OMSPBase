@@ -26,7 +26,7 @@ Phase 1 MVP 核心：双 SDK facade 模型
 │ CameraCapture (D64)    │            │ VideoDecode (D46)      │
 │ HardwareEncode (D43)   │            │ VideoRender (D47)      │
 │ WebRTC Push (D11)      │            │ WebRTC Pull (D11)      │
-│ DataChannel (D65)      │            │ DataChannel (D66)      │
+│ RTCDataChannel (D65)      │            │ RTCDataChannel (D66)      │
 │ MQTT Telemetry (D74)   │            │ Input Forward (D18)    │
 └───────────────────────┘            └───────────────────────┘
         │                                         │
@@ -97,7 +97,7 @@ facade crate，单一入口 re-export 所有车端能力 (D69)
 |------|------|
 | **CameraCapture** | V4L2/AVFoundation/Jetson CSI (D64) |
 | **WebRTC Push** | libwebrtc 弱网编码推流 (D11) |
-| **DataChannel** | 控制指令双向通道 (D65) |
+| **RTCDataChannel** | 控制指令双向通道 (D65) |
 | **MQTT Telemetry** | 车端状态上报 (D74) |
 | **C FFI** | omspbase-field-c: .a + .so 静态+动态库 (D79, D83) |
 
@@ -109,7 +109,7 @@ facade crate，单一入口 re-export 所有座舱能力 (D69)
 |------|------|
 | **WebRTC Pull** | libwebrtc 拉流解码 (D72) |
 | **FFmpeg Decode** | str0m 后端备选 (D70-D71) |
-| **DataChannel** | 控制指令发送 (D66) |
+| **RTCDataChannel** | 控制指令发送 (D66) |
 | **VideoRender** | Phase 1 CPU buffer 渲染 (D47) |
 | **C FFI** | omspbase-remote-client-c: .a 静态链接 FFmpeg (D70) |
 

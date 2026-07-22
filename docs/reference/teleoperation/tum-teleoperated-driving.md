@@ -83,7 +83,7 @@
 |------|------|
 | 视频传输延迟 | G2G 延迟（逐段测量公开）：LTE 中位数 160ms（40Hz 520p 视频），LAN ~125ms。摄像头基础延迟 ~60ms，视频处理管道 ~65ms（编码+传输+解码），网络引入延迟 ~35ms |
 | 控制协议 | ROS2 消息序列化 over UDP（延迟关键：ControlCommand、PointCloud2）+ MQTT over TCP（非延迟关键：车辆状态、网络质量、系统健康） |
-| DataChannel | 无原生 WebRTC DataChannel。正在进行 WebRTC Native API（C++）集成项目，目标：迁移 RTSP → WebRTC + 增加 DataChannel 控制通道 |
+| RTCDataChannel | 无原生 WebRTC RTCDataChannel。正在进行 WebRTC Native API（C++）集成项目，目标：迁移 RTSP → WebRTC + 增加 RTCDataChannel 控制通道 |
 | 安全冗余 | 三级安全管道 (Monitoring → Safety → StateMachine) + 多路由器冗余视频流 + 状态机生命周期管理 |
 | 编码 | GStreamer + H.264 超低延迟编码设置（zerolatency tune + ultrafast speed-preset + intra-refresh + rc-lookahead=0）。码率可配置，多路 RTSP 推流 |
 | 延迟公开 | 全链路分段测量数据公开：LTE/LAN 对比、摄像头基础延迟、视频管道延迟、网络延迟、控制指令延迟、序列化开销 — 所有数字可复现 |
@@ -269,7 +269,7 @@ TUM Teleoperated Driving 在遥操作研究生态中的独特定位：
   - RTSP 缺乏自适应码率：固定编码参数无法根据网络动态调整（论文中明确建议迁移至 WebRTC）
   - ROS2 DDS 元数据开销：RTPS 协议头增加 40-60 字节，对小控制包效率不高
   - LTE 尾部延迟（P99 ~400ms+）是真正的安全风险，需要 jitter buffer 优化
-  - 无原生 WebRTC DataChannel（WebRTC 集成仍在开发中）
+  - 无原生 WebRTC RTCDataChannel（WebRTC 集成仍在开发中）
   - ROS2 Humble → Ubuntu 22.04 锁定：不支持 macOS/Windows/ARM
   - Vehicle Interface 仍需每车型实现（YAML + C++ 插件）
   - 未经过生产级安全认证（ISO 26262 / ISO 21434）
@@ -345,20 +345,20 @@ TUM Teleoperated Driving 在遥操作研究生态中的独特定位：
 - **Direct Control / Trajectory Guidance 双模式**：OMSPBase 遥操作模式枚举支持 `DirectControl`(50Hz) 和 `TrajectoryGuidance`(按需)，根据 RTT 自动推荐
 - **延迟分段测量**：在 pipeline 关键节点注入 NTP 时间戳，逐段计算延迟。实现 7 段延迟分解
 - **模块化独立设计**：每个插件可单独编译、测试和替换（OMSPBase 已采纳此原则）
-- **UDP vs TCP 结论**：控制通道优先使用 UDP-like DataChannel (`ordered:false, maxRetransmits:0`)
+- **UDP vs TCP 结论**：控制通道优先使用 UDP-like RTCDataChannel (`ordered:false, maxRetransmits:0`)
 - **H.264 zerolatency 编码参数组合**：`tune=zerolatency speed-preset=ultrafast intra-refresh=true rc-lookahead=0 sliced-threads=true` — OMSPBase GStreamer 编码插件默认遥操作 preset
 
 ### [Adapt] 需修改后采用
 - **RTSP → WebRTC 视频传输替换**：TUM 论文已确认 RTSP 缺乏自适应码率。OMSPBase 使用 WebRTC + GCC 拥塞控制
 - **ROS2 DDS → FlatBuffers**：OMSPBase 不使用 ROS2，`tod_network::UdpSender<T>` → `ProtocolBroker::Publish(topic, FlatBuffersMessage)`
-- **MQTT → 可靠 DataChannel**：`ordered:true, reliable:true` 替代 MQTT
+- **MQTT → 可靠 RTCDataChannel**：`ordered:true, reliable:true` 替代 MQTT
 - **ROS2 Lifecycle → Plugin 生命周期 + SessionManager**：扩展 OMSPBase Plugin trait 为完整状态机
 - **Safety 决策矩阵 → SafetyValidator trait**：TUM 的网络质量→处理策略矩阵直接映射为 OMSPBase 安全配置
 - **TUM 延迟绝对值 → OMSPBase 延迟 SLO**：LTE 中位数 160ms, 尾延迟 ~400ms 可作为分网络条件的延迟目标
 
 ### [Avoid] 已知坑 / 不适用场景
 - **RTSP ≠ WebRTC**：OMSPBase 必须从第一天就使用 WebRTC，不重复 RTSP 的错误路径
-- **DDS 元数据开销**：OMSPBase 二进制 DataChannel 协议（16 字节）远更紧凑
+- **DDS 元数据开销**：OMSPBase 二进制 RTCDataChannel 协议（16 字节）远更紧凑
 - **Ubuntu 22.04 锁定**：OMSPBase 保持平台独立性（Linux x86_64/ARM/macOS/Windows）
 - **LTE 尾部延迟是安全威胁**：不仅优化中位数，更要关注 P99 和 jitter buffer 调优（目标深度 1-2 帧）
 - **TCP vs UDP 结论仅限 LTE**：高丢包 Wi-Fi/卫星通信场景需重新评估
@@ -374,14 +374,14 @@ TUM Teleoperated Driving 在遥操作研究生态中的独特定位：
 - **H.264 x264enc 超低延迟参数组合**：`tune=zerolatency` + `speed-preset=ultrafast` + `intra-refresh=true` + `rc-lookahead=0` 的组合经过实验验证，OMSPBase 的 GStreamer 编码插件应直接采用此组合作为遥操作默认编码 preset
 - **YAML 配置驱动 VehicleInterface**：OMSPBase 的 `VehicleInterface` trait 应支持运行时 YAML 配置文件定义执行器映射、传感器参数和安全阈值
 - **Direct Control / Trajectory Guidance 双模式**：根据 `NetworkMonitor` 返回的网络质量自动推荐操控模式（RTT < 50ms 推荐 Direct, > 200ms 强制 TrajectoryGuidance）
-- **UDP-like 控制通道优先**：控制通道使用 `ordered:false, maxRetransmits:0` 的 DataChannel 配置
+- **UDP-like 控制通道优先**：控制通道使用 `ordered:false, maxRetransmits:0` 的 RTCDataChannel 配置
 - **三级安全管道架构独立运行**：`NetworkMonitor` + `SafetyValidator` + `SessionManager` 三层独立运行，单一模块失效不会导致全线失控
 
 ### [Adapt] 需修改后采用 (补充)
 
 - **RTSP → WebRTC 视频传输替换**：TUM 论文已确认 RTSP 缺乏自适应码率。OMSPBase 使用 WebRTC + GCC 拥塞控制
 - **ROS2 DDS → FlatBuffers**：`tod_network::UdpSender<T>` → `ProtocolBroker::Publish(topic, FlatBuffersMessage)`
-- **MQTT → 可靠 DataChannel**：`ordered:true, reliable:true` 替代 MQTT 传输非关键数据
+- **MQTT → 可靠 RTCDataChannel**：`ordered:true, reliable:true` 替代 MQTT 传输非关键数据
 - **ROS2 Lifecycle → Plugin 生命周期 + SessionManager**：扩展 OMSPBase Plugin trait 为完整状态机管理
 - **Safety 决策矩阵 → SafetyValidator trait**：TUM 的网络质量→处理策略矩阵直接映射为 OMSPBase 安全配置
 - **TUM 延迟绝对值 → OMSPBase 延迟 SLO**：LTE 中位数 160ms, 尾延迟 ~400ms 可作为分网络条件的延迟目标
@@ -389,7 +389,7 @@ TUM Teleoperated Driving 在遥操作研究生态中的独特定位：
 ### [Avoid] 已知坑 / 不适用场景 (补充)
 
 - **RTSP ≠ WebRTC**：OMSPBase 必须从第一天就使用 WebRTC，不重复 RTSP 的错误路径
-- **DDS 元数据开销**：OMSPBase 二进制 DataChannel 协议（16 字节）远比 DDS 紧凑
+- **DDS 元数据开销**：OMSPBase 二进制 RTCDataChannel 协议（16 字节）远比 DDS 紧凑
 - **Ubuntu 22.04 锁定**：OMSPBase 保持平台独立性（Linux x86_64/ARM/macOS/Windows）
 - **LTE 尾部延迟是安全威胁**：不仅优化中位数，更要关注 P99 和 jitter buffer 调优（目标深度 1-2 帧）
 - **TCP vs UDP 结论仅限 LTE**：高丢包 Wi-Fi/卫星通信场景需重新评估
@@ -414,7 +414,7 @@ TUM Teleoperated Driving 在遥操作研究生态中的独特定位：
 ### [Avoid] 已知坑 / 不适用场景 (补充二)
 
 - **TUM 的 GStreamer x264enc 软件编码延迟不可接受**：x264enc 的软件编码延迟（8-12ms）在 30fps 管线中占比较高。OMSPBase 应优先使用硬件编码器（VAAPI/NVENC/VideoToolbox），软件编码仅作为后备方案
-- **TUM 的 ROS2 DDS 依赖限制了生态**：ROS2 的 DDS 发现协议（Discovery）在跨网络场景中引入额外延迟和带宽消耗。OMSPBase 的自定义 DataChannel 协议完全避免了 DDS 发现开销
+- **TUM 的 ROS2 DDS 依赖限制了生态**：ROS2 的 DDS 发现协议（Discovery）在跨网络场景中引入额外延迟和带宽消耗。OMSPBase 的自定义 RTCDataChannel 协议完全避免了 DDS 发现开销
 - **TUM 的学术论文延迟数据不可直接作为产品 SLO**：实验室环境（静态车辆、固定路线、优质 LTE 信号）的 160ms 中位数在真实城市环境中可能显著恶化。OMSPBase 的延迟 SLO 应基于真实道路测试数据制定
 
 **总体评分**：★★★★☆ (4/5)
@@ -499,9 +499,9 @@ gst-launch-1.0 \
 ### D. TUM 模块到 OMSPBase 架构映射
 | TUM 包 (ROS2) | OMSPBase 对应模块 | 映射说明 |
 |--------------|-------------------|---------|
-| tod_network | omspbase-transport (传输层) | TUM UDP template → OMSPBase DataChannel/WebRTC transport |
+| tod_network | omspbase-transport (传输层) | TUM UDP template → OMSPBase RTCDataChannel/WebRTC transport |
 | tod_video | omspbase-capture + HardwareEncoder + WebRtcPlugin | RTSP → WebRTC (GStreamer 保留为编码引擎) |
-| tod_direct_control | teleop-sdk::DirectControl | 控制协议: DDS → FlatBuffers binary + DataChannel |
+| tod_direct_control | teleop-sdk::DirectControl | 控制协议: DDS → FlatBuffers binary + RTCDataChannel |
 | tod_trajectory_guidance | teleop-sdk::TrajectoryGuidance | 路径点序列化: DDS → FlatBuffers |
 | tod_safety | teleop-sdk::SafetyValidator | 决策矩阵 → SafetyValidator trait + YAML 配置 |
 | tod_monitoring | teleop-sdk::NetworkMonitor | 延迟分段测量: 7 段 → 7 段 (NTP 时间戳注入) |

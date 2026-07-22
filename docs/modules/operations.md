@@ -98,7 +98,7 @@ Phase 1 资源估算（待 profiling 数据细化）：
 - 720p@30 H.264: ~2-4 Mbps
 - 1080p@30 H.265: ~1.5-3 Mbps
 - 信令通道: <50 Kbps
-- DataChannel 控制: <10 Kbps
+- RTCDataChannel 控制: <10 Kbps
 
 ## 系统资源限制
 

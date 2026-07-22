@@ -1,4 +1,4 @@
-//! RtcEngine — entry point for WebRTC backend selection.
+//! RTCEngine — entry point for WebRTC backend selection.
 
 #![allow(unexpected_cfgs)]
 
@@ -15,17 +15,17 @@ compile_error!(
      Enable exactly one of: backend-webrtc-rs, backend-webrtc-sys, backend-str0m"
 );
 
-use crate::peer::PeerConnectionFactory;
+use crate::peer::RTCPeerConnectionFactory;
 
 /// Reference: webrtc-kit create_factory() pattern. D151.
-pub struct RtcEngine;
+pub struct RTCEngine;
 
-impl RtcEngine {
-    /// Create a PeerConnectionFactory for the selected backend.
+impl RTCEngine {
+    /// Create a RTCPeerConnectionFactory for the selected backend.
     ///
     /// Dispatches to the correct factory constructor based on the
     /// active backend feature flag via compile-time type alias.
-    pub fn create_factory() -> PeerConnectionFactory {
-        PeerConnectionFactory::new()
+    pub fn create_factory() -> RTCPeerConnectionFactory {
+        RTCPeerConnectionFactory::new()
     }
 }

@@ -10,18 +10,19 @@
 //! - WebrtcSysFactory: wraps webrtc_sys::peer_connection_factory::ffi::PeerConnectionFactory
 
 use std::sync::{Arc, Mutex};
+use cxx::SharedPtr;
 
 use super::DcBackend;
 use super::PcBackend;
 use super::TrackWriteBackend;
-use crate::channel::{DataChannelRx, DataChannelState};
+use crate::channel::{RTCDataChannelRx, RTCDataChannelState};
 use crate::peer::{
-    AnswerOptions, IceCandidate, IceConnectionState, IceGatheringState, IceTransportsType,
-    OfferOptions, PcConfig, PeerConnectionState, SignalingState,
+    RTCAnswerOptions, RTCIceCandidate, RTCIceConnectionState, RTCIceGatheringState, RTCIceTransportPolicy,
+    RTCOfferOptions, RTCConfiguration, RTCPeerConnectionState, RTCSignalingState,
 };
-use crate::sdp::{SdpType, SessionDescription};
-use crate::track::{AudioTrackConfig, TrackKind};
-use crate::RtcError;
+use crate::sdp::{RTCSdpType, RTCSessionDescription};
+use crate::track::{RTCAudioTrackConfig, TrackKind};
+use crate::RTCError;
 
 // ── WebrtcSysPc ──
 
@@ -55,19 +56,19 @@ fn extract_tx<T: Send + 'static>(
 }
 
 
-// ponytail: map webrtc-sys SdpType → crate SdpType inline
-fn map_sdp_type(st: webrtc_sys::jsep::ffi::SdpType) -> SdpType {
+// ponytail: map webrtc-sys RTCSdpType → crate RTCSdpType inline
+fn map_sdp_type(st: webrtc_sys::jsep::ffi::SdpType) -> RTCSdpType {
     match st {
-        webrtc_sys::jsep::ffi::SdpType::Offer => SdpType::Offer,
-        webrtc_sys::jsep::ffi::SdpType::Answer => SdpType::Answer,
-        webrtc_sys::jsep::ffi::SdpType::PrAnswer => SdpType::PrAnswer,
-        webrtc_sys::jsep::ffi::SdpType::Rollback => SdpType::Rollback,
-        _ => SdpType::Offer, // ponytail: defensive fallback
+        webrtc_sys::jsep::ffi::SdpType::Offer => RTCSdpType::Offer,
+        webrtc_sys::jsep::ffi::SdpType::Answer => RTCSdpType::Answer,
+        webrtc_sys::jsep::ffi::SdpType::PrAnswer => RTCSdpType::PrAnswer,
+        webrtc_sys::jsep::ffi::SdpType::Rollback => RTCSdpType::Rollback,
+        _ => RTCSdpType::Offer, // ponytail: defensive fallback
     }
 }
 
 impl PcBackend for WebrtcSysPc {
-    async fn create_offer(&self, options: &OfferOptions) -> Result<SessionDescription, RtcError> {
+    async fn create_offer(&self, options: &RTCOfferOptions) -> Result<RTCSessionDescription, RTCError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let ctx = make_ctx(tx);
 
@@ -81,116 +82,116 @@ impl PcBackend for WebrtcSysPc {
             opts,
             ctx,
             |ctx, sdp| {
-                let tx: tokio::sync::oneshot::Sender<Result<SessionDescription, RtcError>> =
+                let tx: tokio::sync::oneshot::Sender<Result<RTCSessionDescription, RTCError>> =
                     extract_tx(ctx);
                 let sdp_type = map_sdp_type(sdp.sdp_type());
                 let sdp_str = sdp.stringify();
-                let _ = tx.send(Ok(SessionDescription {
+                let _ = tx.send(Ok(RTCSessionDescription {
                     sdp_type,
                     sdp: sdp_str,
                 }));
             },
             |ctx, error| {
-                let tx: tokio::sync::oneshot::Sender<Result<SessionDescription, RtcError>> =
+                let tx: tokio::sync::oneshot::Sender<Result<RTCSessionDescription, RTCError>> =
                     extract_tx(ctx);
-                let _ = tx.send(Err(RtcError::Internal(error.message)));
+                let _ = tx.send(Err(RTCError::Internal(error.message)));
             },
         );
 
         rx.await
-            .map_err(|_| RtcError::Internal("oneshot cancelled".into()))?
+            .map_err(|_| RTCError::Internal("oneshot cancelled".into()))?
     }
 
     async fn create_answer(
         &self,
-        _options: &AnswerOptions,
-    ) -> Result<SessionDescription, RtcError> {
+        _options: &RTCAnswerOptions,
+    ) -> Result<RTCSessionDescription, RTCError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let ctx = make_ctx(tx);
 
         let opts = webrtc_sys::peer_connection::ffi::RtcOfferAnswerOptions::default();
-        // ponytail: AnswerOptions has no fields currently, pass defaults
+        // ponytail: RTCAnswerOptions has no fields currently, pass defaults
 
         self.pc.create_answer(
             opts,
             ctx,
             |ctx, sdp| {
-                let tx: tokio::sync::oneshot::Sender<Result<SessionDescription, RtcError>> =
+                let tx: tokio::sync::oneshot::Sender<Result<RTCSessionDescription, RTCError>> =
                     extract_tx(ctx);
                 let sdp_type = map_sdp_type(sdp.sdp_type());
                 let sdp_str = sdp.stringify();
-                let _ = tx.send(Ok(SessionDescription {
+                let _ = tx.send(Ok(RTCSessionDescription {
                     sdp_type,
                     sdp: sdp_str,
                 }));
             },
             |ctx, error| {
-                let tx: tokio::sync::oneshot::Sender<Result<SessionDescription, RtcError>> =
+                let tx: tokio::sync::oneshot::Sender<Result<RTCSessionDescription, RTCError>> =
                     extract_tx(ctx);
-                let _ = tx.send(Err(RtcError::Internal(error.message)));
+                let _ = tx.send(Err(RTCError::Internal(error.message)));
             },
         );
 
         rx.await
-            .map_err(|_| RtcError::Internal("oneshot cancelled".into()))?
+            .map_err(|_| RTCError::Internal("oneshot cancelled".into()))?
     }
 
-    async fn set_local_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
+    async fn set_local_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let ctx = make_ctx(tx);
 
         let sdp_type = match desc.sdp_type {
-            SdpType::Offer => webrtc_sys::jsep::ffi::SdpType::Offer,
-            SdpType::Answer => webrtc_sys::jsep::ffi::SdpType::Answer,
-            SdpType::PrAnswer => webrtc_sys::jsep::ffi::SdpType::PrAnswer,
-            SdpType::Rollback => webrtc_sys::jsep::ffi::SdpType::Rollback,
+            RTCSdpType::Offer => webrtc_sys::jsep::ffi::SdpType::Offer,
+            RTCSdpType::Answer => webrtc_sys::jsep::ffi::SdpType::Answer,
+            RTCSdpType::PrAnswer => webrtc_sys::jsep::ffi::SdpType::PrAnswer,
+            RTCSdpType::Rollback => webrtc_sys::jsep::ffi::SdpType::Rollback,
         };
 
         let sd = webrtc_sys::jsep::ffi::create_session_description(sdp_type, desc.sdp.clone())
-            .map_err(|e| RtcError::Sdp(e.what().to_owned()))?;
+            .map_err(|e| RTCError::Sdp(e.what().to_owned()))?;
 
         // ponytail: set_local_description has a single on_complete callback (ctx, error)
         self.pc.set_local_description(sd, ctx, |ctx, error| {
-            let tx: tokio::sync::oneshot::Sender<Result<(), RtcError>> = extract_tx(ctx);
+            let tx: tokio::sync::oneshot::Sender<Result<(), RTCError>> = extract_tx(ctx);
             if error.ok() {
                 let _ = tx.send(Ok(()));
             } else {
-                let _ = tx.send(Err(RtcError::Sdp(error.message)));
+                let _ = tx.send(Err(RTCError::Sdp(error.message)));
             }
         });
 
         rx.await
-            .map_err(|_| RtcError::Internal("oneshot cancelled".into()))?
+            .map_err(|_| RTCError::Internal("oneshot cancelled".into()))?
     }
 
-    async fn set_remote_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
+    async fn set_remote_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let ctx = make_ctx(tx);
 
         let sdp_type = match desc.sdp_type {
-            SdpType::Offer => webrtc_sys::jsep::ffi::SdpType::Offer,
-            SdpType::Answer => webrtc_sys::jsep::ffi::SdpType::Answer,
-            SdpType::PrAnswer => webrtc_sys::jsep::ffi::SdpType::PrAnswer,
-            SdpType::Rollback => webrtc_sys::jsep::ffi::SdpType::Rollback,
+            RTCSdpType::Offer => webrtc_sys::jsep::ffi::SdpType::Offer,
+            RTCSdpType::Answer => webrtc_sys::jsep::ffi::SdpType::Answer,
+            RTCSdpType::PrAnswer => webrtc_sys::jsep::ffi::SdpType::PrAnswer,
+            RTCSdpType::Rollback => webrtc_sys::jsep::ffi::SdpType::Rollback,
         };
 
         let sd = webrtc_sys::jsep::ffi::create_session_description(sdp_type, desc.sdp.clone())
-            .map_err(|e| RtcError::Sdp(e.what().to_owned()))?;
+            .map_err(|e| RTCError::Sdp(e.what().to_owned()))?;
 
         self.pc.set_remote_description(sd, ctx, |ctx, error| {
-            let tx: tokio::sync::oneshot::Sender<Result<(), RtcError>> = extract_tx(ctx);
+            let tx: tokio::sync::oneshot::Sender<Result<(), RTCError>> = extract_tx(ctx);
             if error.ok() {
                 let _ = tx.send(Ok(()));
             } else {
-                let _ = tx.send(Err(RtcError::Sdp(error.message)));
+                let _ = tx.send(Err(RTCError::Sdp(error.message)));
             }
         });
 
         rx.await
-            .map_err(|_| RtcError::Internal("oneshot cancelled".into()))?
+            .map_err(|_| RTCError::Internal("oneshot cancelled".into()))?
     }
 
-    async fn add_ice_candidate(&self, candidate: &IceCandidate) -> Result<(), RtcError> {
+    async fn add_ice_candidate(&self, candidate: &RTCIceCandidate) -> Result<(), RTCError> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         let ctx = make_ctx(tx);
 
@@ -199,102 +200,102 @@ impl PcBackend for WebrtcSysPc {
             candidate.sdp_mline_index.map(|v| v as i32).unwrap_or(0),
             candidate.candidate.clone(),
         )
-        .map_err(|e| RtcError::PeerConnection(e.what().to_owned()))?;
+        .map_err(|e| RTCError::RTCPeerConnection(e.what().to_owned()))?;
 
         self.pc.add_ice_candidate(ic, ctx, |ctx, error| {
-            let tx: tokio::sync::oneshot::Sender<Result<(), RtcError>> = extract_tx(ctx);
+            let tx: tokio::sync::oneshot::Sender<Result<(), RTCError>> = extract_tx(ctx);
             if error.ok() {
                 let _ = tx.send(Ok(()));
             } else {
-                let _ = tx.send(Err(RtcError::PeerConnection(error.message)));
+                let _ = tx.send(Err(RTCError::RTCPeerConnection(error.message)));
             }
         });
 
         rx.await
-            .map_err(|_| RtcError::Internal("oneshot cancelled".into()))?
+            .map_err(|_| RTCError::Internal("oneshot cancelled".into()))?
     }
 
-    fn connection_state(&self) -> PeerConnectionState {
+    fn connection_state(&self) -> RTCPeerConnectionState {
         match self.pc.connection_state() {
-            webrtc_sys::peer_connection::ffi::PeerConnectionState::New => PeerConnectionState::New,
+            webrtc_sys::peer_connection::ffi::PeerConnectionState::New => RTCPeerConnectionState::New,
             webrtc_sys::peer_connection::ffi::PeerConnectionState::Connecting => {
-                PeerConnectionState::Connecting
+                RTCPeerConnectionState::Connecting
             }
             webrtc_sys::peer_connection::ffi::PeerConnectionState::Connected => {
-                PeerConnectionState::Connected
+                RTCPeerConnectionState::Connected
             }
             webrtc_sys::peer_connection::ffi::PeerConnectionState::Disconnected => {
-                PeerConnectionState::Disconnected
+                RTCPeerConnectionState::Disconnected
             }
             webrtc_sys::peer_connection::ffi::PeerConnectionState::Failed => {
-                PeerConnectionState::Failed
+                RTCPeerConnectionState::Failed
             }
             webrtc_sys::peer_connection::ffi::PeerConnectionState::Closed => {
-                PeerConnectionState::Closed
+                RTCPeerConnectionState::Closed
             }
-            _ => PeerConnectionState::New, // ponytail: defensive fallback
+            _ => RTCPeerConnectionState::New, // ponytail: defensive fallback
         }
     }
 
-    fn ice_connection_state(&self) -> IceConnectionState {
+    fn ice_connection_state(&self) -> RTCIceConnectionState {
         match self.pc.ice_connection_state() {
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionNew => {
-                IceConnectionState::New
+                RTCIceConnectionState::New
             }
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionChecking => {
-                IceConnectionState::Checking
+                RTCIceConnectionState::Checking
             }
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionConnected => {
-                IceConnectionState::Connected
+                RTCIceConnectionState::Connected
             }
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionCompleted => {
-                IceConnectionState::Completed
+                RTCIceConnectionState::Completed
             }
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionFailed => {
-                IceConnectionState::Failed
+                RTCIceConnectionState::Failed
             }
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionDisconnected => {
-                IceConnectionState::Disconnected
+                RTCIceConnectionState::Disconnected
             }
             webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionClosed => {
-                IceConnectionState::Closed
+                RTCIceConnectionState::Closed
             }
-            _ => IceConnectionState::New, // ponytail: defensive fallback
+            _ => RTCIceConnectionState::New, // ponytail: defensive fallback
         }
     }
 
-    fn ice_gathering_state(&self) -> IceGatheringState {
+    fn ice_gathering_state(&self) -> RTCIceGatheringState {
         match self.pc.ice_gathering_state() {
             webrtc_sys::peer_connection::ffi::IceGatheringState::IceGatheringNew => {
-                IceGatheringState::New
+                RTCIceGatheringState::New
             }
             webrtc_sys::peer_connection::ffi::IceGatheringState::IceGatheringGathering => {
-                IceGatheringState::Gathering
+                RTCIceGatheringState::Gathering
             }
             webrtc_sys::peer_connection::ffi::IceGatheringState::IceGatheringComplete => {
-                IceGatheringState::Complete
+                RTCIceGatheringState::Complete
             }
-            _ => IceGatheringState::New, // ponytail: defensive fallback
+            _ => RTCIceGatheringState::New, // ponytail: defensive fallback
         }
     }
 
-    fn signaling_state(&self) -> SignalingState {
+    fn signaling_state(&self) -> RTCSignalingState {
         match self.pc.signaling_state() {
-            webrtc_sys::peer_connection::ffi::SignalingState::Stable => SignalingState::Stable,
+            webrtc_sys::peer_connection::ffi::SignalingState::Stable => RTCSignalingState::Stable,
             webrtc_sys::peer_connection::ffi::SignalingState::HaveLocalOffer => {
-                SignalingState::HaveLocalOffer
+                RTCSignalingState::HaveLocalOffer
             }
             webrtc_sys::peer_connection::ffi::SignalingState::HaveLocalPrAnswer => {
-                SignalingState::HaveLocalPrAnswer
+                RTCSignalingState::HaveLocalPrAnswer
             }
             webrtc_sys::peer_connection::ffi::SignalingState::HaveRemoteOffer => {
-                SignalingState::HaveRemoteOffer
+                RTCSignalingState::HaveRemoteOffer
             }
             webrtc_sys::peer_connection::ffi::SignalingState::HaveRemotePrAnswer => {
-                SignalingState::HaveRemotePrAnswer
+                RTCSignalingState::HaveRemotePrAnswer
             }
-            webrtc_sys::peer_connection::ffi::SignalingState::Closed => SignalingState::Closed,
-            _ => SignalingState::Stable, // ponytail: defensive fallback
+            webrtc_sys::peer_connection::ffi::SignalingState::Closed => RTCSignalingState::Closed,
+            _ => RTCSignalingState::Stable, // ponytail: defensive fallback
         }
     }
 
@@ -309,9 +310,9 @@ impl WebrtcSysPc {
     pub(crate) async fn create_data_channel(
         &self,
         label: &str,
-        init: crate::channel::DataChannelInit,
-    ) -> Result<crate::channel::DataChannel, RtcError> {
-        use crate::channel::DataChannel;
+        init: crate::channel::RTCDataChannelInit,
+    ) -> Result<crate::channel::RTCDataChannel, RTCError> {
+        use crate::channel::RTCDataChannel;
 
         let sys_init = webrtc_sys::data_channel::ffi::DataChannelInit {
             ordered: init.ordered,
@@ -329,9 +330,9 @@ impl WebrtcSysPc {
         let dc = self
             .pc
             .create_data_channel(label.to_string(), sys_init)
-            .map_err(|e| RtcError::PeerConnection(e.what().to_owned()))?;
+            .map_err(|e| RTCError::RTCPeerConnection(e.what().to_owned()))?;
 
-        Ok(DataChannel {
+        Ok(RTCDataChannel {
             label: label.to_string(),
             id: dc.id(),
             backend: WebrtcSysDc { dc },
@@ -353,17 +354,17 @@ impl std::fmt::Debug for WebrtcSysDc {
 }
 
 impl DcBackend for WebrtcSysDc {
-    fn state(&self) -> DataChannelState {
+    fn state(&self) -> RTCDataChannelState {
         match self.dc.state() {
-            webrtc_sys::data_channel::ffi::DataState::Connecting => DataChannelState::Connecting,
-            webrtc_sys::data_channel::ffi::DataState::Open => DataChannelState::Open,
-            webrtc_sys::data_channel::ffi::DataState::Closing => DataChannelState::Closing,
-            webrtc_sys::data_channel::ffi::DataState::Closed => DataChannelState::Closed,
-            _ => DataChannelState::Closed, // ponytail: defensive fallback
+            webrtc_sys::data_channel::ffi::DataState::Connecting => RTCDataChannelState::Connecting,
+            webrtc_sys::data_channel::ffi::DataState::Open => RTCDataChannelState::Open,
+            webrtc_sys::data_channel::ffi::DataState::Closing => RTCDataChannelState::Closing,
+            webrtc_sys::data_channel::ffi::DataState::Closed => RTCDataChannelState::Closed,
+            _ => RTCDataChannelState::Closed, // ponytail: defensive fallback
         }
     }
 
-    async fn send(&self, data: &[u8]) -> Result<(), RtcError> {
+    async fn send(&self, data: &[u8]) -> Result<(), RTCError> {
         let buf = webrtc_sys::data_channel::ffi::DataBuffer {
             ptr: data.as_ptr(),
             len: data.len(),
@@ -374,7 +375,7 @@ impl DcBackend for WebrtcSysDc {
         Ok(())
     }
 
-    async fn send_text(&self, text: &str) -> Result<(), RtcError> {
+    async fn send_text(&self, text: &str) -> Result<(), RTCError> {
         let buf = webrtc_sys::data_channel::ffi::DataBuffer {
             ptr: text.as_ptr(),
             len: text.len(),
@@ -384,9 +385,9 @@ impl DcBackend for WebrtcSysDc {
         Ok(())
     }
 
-    async fn spool(&self) -> DataChannelRx {
+    async fn spool(&self) -> RTCDataChannelRx {
         // ponytail: observer registration for spool needs a DataChannelObserver — deferred
-        DataChannelRx::stub()
+        RTCDataChannelRx::stub()
     }
 
     async fn close(&mut self) {
@@ -438,8 +439,8 @@ impl TrackWriteBackend for WebrtcSysTrack {
         &self,
         data: &[u8],
         _kind: TrackKind,
-        _audio_config: Option<&AudioTrackConfig>,
-    ) -> Result<(), RtcError> {
+        _audio_config: Option<&RTCAudioTrackConfig>,
+    ) -> Result<(), RTCError> {
         tracing::debug!(
             "TrackSender::write_frame (webrtc-sys): {} bytes (encoded pass-through)",
             data.len()
@@ -450,14 +451,14 @@ impl TrackWriteBackend for WebrtcSysTrack {
 
     async fn write_raw_i420(
         &self, data: &[u8], width: u32, height: u32,
-    ) -> Result<(), RtcError> {
+    ) -> Result<(), RTCError> {
         use webrtc_sys::video_frame::ffi as vf;
         use webrtc_sys::video_frame_buffer::ffi as vfb;
         use webrtc_sys::video_track::ffi as vt;
 
         let source = self.video_source.lock().unwrap()
             .clone()
-            .ok_or_else(|| RtcError::Track("video source not initialized".into()))?;
+            .ok_or_else(|| RTCError::Track("video source not initialized".into()))?;
 
         let w: i32 = width as i32;
         let h: i32 = height as i32;
@@ -465,7 +466,7 @@ impl TrackWriteBackend for WebrtcSysTrack {
         let y_size = (w * h) as usize;
         let uv_size = ((w / 2) * (h / 2)) as usize;
         if data.len() < y_size + 2 * uv_size {
-            return Err(RtcError::Track("I420 data too short".into()));
+            return Err(RTCError::Track("I420 data too short".into()));
         }
 
         let i420 = vfb::new_i420_buffer(w, h, w, w / 2, w / 2);
@@ -473,14 +474,15 @@ impl TrackWriteBackend for WebrtcSysTrack {
         // SAFETY: I420Buffer owns the memory; slices live within the call scope.
         // The frame builder consumes the buffer via set_video_frame_buffer before build().
         unsafe {
+            let yuv = vfb::i420_to_yuv8(&*i420);
             let y_slice = std::slice::from_raw_parts_mut(
-                i420.data_y() as *mut u8, y_size,
+                (*yuv).data_y() as *mut u8, y_size,
             );
             let u_slice = std::slice::from_raw_parts_mut(
-                i420.data_u() as *mut u8, uv_size,
+                (*yuv).data_u() as *mut u8, uv_size,
             );
             let v_slice = std::slice::from_raw_parts_mut(
-                i420.data_v() as *mut u8, uv_size,
+                (*yuv).data_v() as *mut u8, uv_size,
             );
             y_slice.copy_from_slice(&data[..y_size]);
             u_slice.copy_from_slice(&data[y_size..y_size + uv_size]);
@@ -491,9 +493,9 @@ impl TrackWriteBackend for WebrtcSysTrack {
         let mut builder = vf::new_video_frame_builder();
         builder.pin_mut().set_timestamp_us(0);
         builder.pin_mut().set_video_frame_buffer(
-            // SAFETY: yuv_to_vfb upcasts PlanarYuvBuffer → VideoFrameBuffer
+            // SAFETY: i420 → yuv8 → yuv → vfb upcast chain
             unsafe { &*vfb::yuv_to_vfb(
-                vfb::i420_to_yuv8(&i420)
+                vfb::yuv8_to_yuv(vfb::i420_to_yuv8(&*i420))
             ) },
         );
         let frame = builder.pin_mut().build();
@@ -624,9 +626,9 @@ impl std::fmt::Debug for WebrtcSysFactory {
 impl WebrtcSysFactory {
     pub(crate) async fn create_peer_connection(
         &self,
-        config: PcConfig,
-    ) -> Result<WebrtcSysPc, RtcError> {
-        tracing::info!("Creating PeerConnection (webrtc-sys)");
+        config: RTCConfiguration,
+    ) -> Result<WebrtcSysPc, RTCError> {
+        tracing::info!("Creating RTCPeerConnection (webrtc-sys)");
 
         let ice_servers: Vec<webrtc_sys::peer_connection::ffi::IceServer> = config
             .ice_servers
@@ -639,13 +641,13 @@ impl WebrtcSysFactory {
             .collect();
 
         let ice_transport_type = match config.ice_transport_type {
-            IceTransportsType::Relay => {
+            RTCIceTransportPolicy::Relay => {
                 webrtc_sys::peer_connection::ffi::IceTransportsType::Relay
             }
-            IceTransportsType::NoHost => {
+            RTCIceTransportPolicy::NoHost => {
                 webrtc_sys::peer_connection::ffi::IceTransportsType::NoHost
             }
-            IceTransportsType::All => webrtc_sys::peer_connection::ffi::IceTransportsType::All,
+            RTCIceTransportPolicy::All => webrtc_sys::peer_connection::ffi::IceTransportsType::All,
         };
 
         let rtc_config = webrtc_sys::peer_connection::ffi::RtcConfiguration {
@@ -663,14 +665,14 @@ impl WebrtcSysFactory {
         let pc = self
             .factory
             .create_peer_connection(rtc_config, Box::new(observer))
-            .map_err(|e| RtcError::PeerConnection(e.what().to_owned()))?;
+            .map_err(|e| RTCError::RTCPeerConnection(e.what().to_owned()))?;
 
         Ok(WebrtcSysPc { pc })
     }
 
     /// Create a video track with a new VideoTrackSource.
     /// Returns (WebrtcSysTrack, SharedPtr<MediaStreamTrack>) —
-    /// the media track can be added to the PeerConnection via add_track.
+    /// the media track can be added to the RTCPeerConnection via add_track.
     pub(crate) fn create_video_track(
         &self,
     ) -> (

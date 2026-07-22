@@ -433,7 +433,7 @@
 - **IPC 共享内存使用 NULL 安全属性**：所有 IPC 通道必须有显式 ACL 或权限验证。Unix 下 Unix Socket 使用文件权限限制（0600），Windows 下命名管道设置安全描述符
 - **DeskRT 的专有封闭性**：OMSPBase 的协议和编解码器必须是 RFC 标准或公开文档化。专有编解码器不可审计（政府/金融/军事场景的合规障碍），而且被厂商锁定（AnyDesk 如果改变许可或停止支持，DeskRT 成为技术孤岛）
 - **中继优先导致第三方可见媒体数据**：对自托管场景提供 E2E 加密 + 中继不透明选项。对委托场景（由 AUDEBase 管理），审计要求可能需数据在服务器端可见——这应作为配置选项而非硬编码
-- **纯 TCP 策略在弱网下的性能损失**：TCP 的队头阻塞和慢启动在高丢包率场景是致命的。OMSPBase 的媒体传输必须基于 UDP（RTP/WebRTC DataChannel），TCP 仅用于信令。这是 Parsec、ToDesk、RustDesk 的共识
+- **纯 TCP 策略在弱网下的性能损失**：TCP 的队头阻塞和慢启动在高丢包率场景是致命的。OMSPBase 的媒体传输必须基于 UDP（RTP/WebRTC RTCDataChannel），TCP 仅用于信令。这是 Parsec、ToDesk、RustDesk 的共识
 - **Erlang 人才稀缺的长期维护风险**：OMSPBase 的基础设施组件应选择与核心技术栈一致的 Rust/C++/TypeScript，避免引入需要稀缺人才的技术孤岛
 - **被动接受中继的加密方案**：不要将"加密了"等同于"安全了"——TLS 1.3 传输加密保护了链路层，但数据在服务器端对运营商可见。必须在架构文档中明确区分"传输加密"（TLS，保护中间人攻击）和"端到端加密"（WebRTC DTLS-SRTP / NaCl，保护服务器运营商），并在设计上支持两种模式的可配置切换
 

@@ -42,7 +42,7 @@ pub enum SignalingMessage {
     },
 
     /// ICE candidate relayed through Server.
-    IceCandidate {
+    RTCIceCandidate {
         room_id: String,
         target: Option<String>,
         candidate: String,
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn roundtrip_ice_candidate() {
-        let msg = SignalingMessage::IceCandidate {
+        let msg = SignalingMessage::RTCIceCandidate {
             room_id: "r1".into(),
             target: None,
             candidate: "candidate:1 1 UDP 2130706431 10.0.0.1 8000 typ host".into(),
@@ -113,7 +113,7 @@ mod tests {
         };
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
-        assert!(matches!(parsed, SignalingMessage::IceCandidate { .. }));
+        assert!(matches!(parsed, SignalingMessage::RTCIceCandidate { .. }));
     }
 }
 

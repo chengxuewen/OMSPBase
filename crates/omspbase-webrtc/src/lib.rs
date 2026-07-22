@@ -1,7 +1,7 @@
 //! omspbase-webrtc — multi-backend W3C WebRTC API wrapper.
 //!
-//! Provides PeerConnection and DataChannel types through
-//! [`RtcEngine::create_factory`] as the unified entry point.
+//! Provides RTCPeerConnection and RTCDataChannel types through
+//! [`RTCEngine::create_factory`] as the unified entry point.
 //! Two backends:
 //! - `backend-webrtc-rs` feature: real webrtc-rs implementation
 //! - default (no feature): stub for compilation without WebRTC
@@ -14,9 +14,10 @@ pub mod engine;
 pub mod rtp;
 pub mod rtp_params;
 pub mod stats;
-pub(crate) mod backend;
+pub mod backend;
 
-pub use channel::*;
+// Re-export backend-specific types for examples/tests
+pub use backend::TrackWriteBackend;
 pub use peer::*;
 pub use sdp::*;
 pub use track::*;
@@ -27,11 +28,11 @@ pub use stats::*;
 
 /// Error type for all WebRTC operations.
 #[derive(Debug, thiserror::Error)]
-pub enum RtcError {
-    #[error("PeerConnection error: {0}")]
-    PeerConnection(String),
-    #[error("DataChannel error: {0}")]
-    DataChannel(String),
+pub enum RTCError {
+    #[error("RTCPeerConnection error: {0}")]
+    RTCPeerConnection(String),
+    #[error("RTCDataChannel error: {0}")]
+    RTCDataChannel(String),
     #[error("SDP error: {0}")]
     Sdp(String),
     #[error("Track error: {0}")]
@@ -41,22 +42,22 @@ pub enum RtcError {
 }
 
 #[cfg(feature = "backend-webrtc-rs")]
-impl From<webrtc::error::Error> for RtcError {
+impl From<webrtc::error::Error> for RTCError {
     fn from(e: webrtc::error::Error) -> Self {
-        RtcError::Internal(e.to_string())
+        RTCError::Internal(e.to_string())
     }
 }
 
-impl RtcError {
+impl RTCError {
     /// Return a stable, context-free identifier for this error.
     /// Used by future i18n layers to look up locale-specific text.
     pub fn locale_key(&self) -> &'static str {
         match self {
-            RtcError::PeerConnection(_) => "RTCPC",
-            RtcError::DataChannel(_) => "RTCDC",
-            RtcError::Sdp(_) => "RTCSD",
-            RtcError::Track(_) => "RTCTK",
-            RtcError::Internal(_) => "RTCIN",
+            RTCError::RTCPeerConnection(_) => "RTCPC",
+            RTCError::RTCDataChannel(_) => "RTCDC",
+            RTCError::Sdp(_) => "RTCSD",
+            RTCError::Track(_) => "RTCTK",
+            RTCError::Internal(_) => "RTCIN",
         }
     }
 }

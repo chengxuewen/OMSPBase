@@ -14,7 +14,8 @@
 use eframe::egui;
 use egui::ColorImage;
 use omspbase_webrtc::peer::*;
-use omspbase_webrtc::track::TrackKind;
+use omspbase_webrtc::track::{TrackKind, TrackSender};
+use omspbase_webrtc::TrackWriteBackend;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -159,28 +160,51 @@ fn run_p2p(p: Arc<Pipeline>) {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         *p.status.lock().unwrap() = "Creating PeerConnections...".into();
-
-        let factory = PeerConnectionFactory::new();
+        let factory = RTCPeerConnectionFactory::new();
+        // ponytail: use the SAME factory for both PC and video track —
+        // libwebrtc requires tracks to be created by the PC's factory.
+        let sys_factory = &factory.backend;
         let pc_sender = factory
-            .create_peer_connection(PcConfig::default())
+            .create_peer_connection(RTCConfiguration::default())
             .await
             .expect("sender pc");
         let pc_receiver = factory
-            .create_peer_connection(PcConfig::default())
+            .create_peer_connection(RTCConfiguration::default())
             .await
             .expect("receiver pc");
 
-        // onTrack callback
-        let p2 = p.clone();
-        // ponytail: stub backend onTrack is no-op; real backend delivers frames
-        pc_receiver.onTrack(move |_receiver| {
-            p2.receiver_count.fetch_add(1, Ordering::Relaxed);
+        // ── Create video track with real VideoTrackSource ──
+        // create_video_track_custom returns (WebrtcSysTrack, MediaStreamTrack)
+        let (backend, media_track) = sys_factory.create_video_track_custom(
+            "loopback-video".into(), W, H,
+        );
+
+        // Register the MediaStreamTrack with the sender PC (libwebrtc requires this)
+        pc_sender.backend.accept_video_track(media_track);
+        let track_sender = TrackSender {
+            id: "loopback-video".to_string(),
+            kind: TrackKind::Video,
+            audio_config: None,
+            backend,  // WebrtcSysTrack with the same VideoTrackSource
+        };
+
+        // Register the track so RTP transmission is active
+        pc_sender.add_track("loopback-video", TrackKind::Video)
+            .expect("add track");
+
+        // onTrack callback — fires when remote track arrives after SDP negotiation
+        let log_status = p.clone();
+        pc_receiver.on_track(move |_receiver| {
+            *log_status.status.lock().unwrap() = "Receiver: remote track connected!".into();
         });
+
+        // Subscribe to decoded frames from the receiver's VideoSink
+        let frame_rx = pc_receiver.backend.subscribe_frames();
 
         // SDP exchange
         *p.status.lock().unwrap() = "Exchanging SDP...".into();
         let offer = pc_sender
-            .create_offer(&OfferOptions {
+            .create_offer(&RTCOfferOptions {
                 offer_to_receive_video: false,
                 offer_to_receive_audio: false,
                 ..Default::default()
@@ -194,7 +218,7 @@ fn run_p2p(p: Arc<Pipeline>) {
             .expect("set remote");
 
         let answer = pc_receiver
-            .create_answer(&AnswerOptions::default())
+            .create_answer(&RTCAnswerOptions::default())
             .await
             .expect("answer");
         pc_receiver
@@ -205,16 +229,22 @@ fn run_p2p(p: Arc<Pipeline>) {
             .set_remote_description(&answer)
             .await
             .expect("set remote");
-
-        // Add video track
-        *p.status.lock().unwrap() = "Adding video track...".into();
-        let track_id = pc_sender
-            .add_track("loopback-video", TrackKind::Video)
-            .expect("add track");
-
+        let s = format!("{:?}", pc_sender.connection_state());
+        let r = format!("{:?}", pc_receiver.connection_state());
         *p.p2p_state.lock().unwrap() = P2pState::Connected;
-        *p.status.lock().unwrap() = format!("Connected — track: {track_id}");
+        *p.status.lock().unwrap() = format!("S:{} | R:{}", s, r);
 
+        // Spawn receiver frame decoder thread
+        let p_rcv = p.clone();
+        std::thread::spawn(move || {
+            while let Ok((i420, w, h)) = frame_rx.recv() {
+                let rgba = i420_to_rgba(&i420, w, h);
+                let mut f = p_rcv.receiver_frame.lock().unwrap();
+                *f = Some((rgba, w, h));
+                drop(f);
+                p_rcv.receiver_count.fetch_add(1, Ordering::Relaxed);
+            }
+        });
         // Frame generation loop
         let mut frame_idx: u64 = 0;
         let frame_interval = std::time::Duration::from_millis(33);
@@ -225,8 +255,8 @@ fn run_p2p(p: Arc<Pipeline>) {
             *p.sender_frame.lock().unwrap() = Some((rgba, W, H));
             p.sender_count.fetch_add(1, Ordering::Relaxed);
 
-            // ponytail: write_frame skipped — stub backend no-ops track write.
-            // Real backend: get TrackRef::Sender and call ts.write_frame(&i420).
+            // Write raw I420 frame to the webrtc track
+            let _ = track_sender.backend.write_raw_i420(&i420, W, H).await;
 
             frame_idx += 1;
             tokio::time::sleep(frame_interval).await;

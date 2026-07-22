@@ -1,4 +1,4 @@
-// DataChannel control + HMAC validation + buffer tracking
+// RTCDataChannel control + HMAC validation + buffer tracking
 // MVP quality — validates frames, tracks buffer, drops oldest when >3 deep
 
 use hmac::{Hmac, Mac};
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Control frame types received over DataChannel
+/// Control frame types received over RTCDataChannel
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub enum ControlFrame {

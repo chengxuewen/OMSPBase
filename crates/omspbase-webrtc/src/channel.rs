@@ -1,13 +1,13 @@
-//! DataChannel thin wrapper.
+//! RTCDataChannel thin wrapper.
 //!
 //! Delegates operations to the backend (DcBackend trait)
 //! via compile-time type alias dispatch.
 
 use crate::backend::{ActiveDc, DcBackend};
-use crate::RtcError;
+use crate::RTCError;
 
 #[derive(Debug, Clone)]
-pub struct DataChannelInit {
+pub struct RTCDataChannelInit {
     pub ordered: bool,
     pub max_retransmit_time: Option<i32>,
     pub max_retransmits: Option<i32>,
@@ -16,7 +16,7 @@ pub struct DataChannelInit {
     pub id: i32,
 }
 
-impl Default for DataChannelInit {
+impl Default for RTCDataChannelInit {
     fn default() -> Self {
         Self { ordered: true, max_retransmit_time: None, max_retransmits: None,
                protocol: String::new(), negotiated: false, id: -1 }
@@ -24,31 +24,31 @@ impl Default for DataChannelInit {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DataChannelState { Connecting, Open, Closing, Closed }
+pub enum RTCDataChannelState { Connecting, Open, Closing, Closed }
 
-pub struct DataChannel {
+pub struct RTCDataChannel {
     pub(crate) label: String,
     pub(crate) id: i32,
     pub(crate) backend: ActiveDc,
 }
 
-impl DataChannel {
+impl RTCDataChannel {
     pub fn label(&self) -> &str { &self.label }
     pub fn id(&self) -> i32 { self.id }
 
-    pub fn state(&self) -> DataChannelState {
+    pub fn state(&self) -> RTCDataChannelState {
         self.backend.state()
     }
 
-    pub async fn send(&self, data: &[u8]) -> Result<(), RtcError> {
+    pub async fn send(&self, data: &[u8]) -> Result<(), RTCError> {
         self.backend.send(data).await
     }
 
-    pub async fn send_text(&self, text: &str) -> Result<(), RtcError> {
+    pub async fn send_text(&self, text: &str) -> Result<(), RTCError> {
         self.backend.send_text(text).await
     }
 
-    pub async fn spool(&self) -> DataChannelRx {
+    pub async fn spool(&self) -> RTCDataChannelRx {
         self.backend.spool().await
     }
 
@@ -57,14 +57,14 @@ impl DataChannel {
     }
 }
 #[cfg(feature = "backend-webrtc-rs")]
-impl DataChannel {
+impl RTCDataChannel {
     pub async fn from_webrtc(dc: std::sync::Arc<webrtc::data_channel::RTCDataChannel>) -> Self {
         let label = dc.label().to_string();
         let id = dc.id() as i32;
         Self { label, id, backend: crate::backend::webrtc_rs::WebrtcRsDc::new(dc) }
     }
 }
-impl Clone for DataChannel {
+impl Clone for RTCDataChannel {
     fn clone(&self) -> Self {
         Self {
             label: self.label.clone(),
@@ -74,17 +74,17 @@ impl Clone for DataChannel {
     }
 }
 
-impl std::fmt::Debug for DataChannel {
+impl std::fmt::Debug for RTCDataChannel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DataChannel").field("id", &self.id).field("label", &self.label).finish()
+        f.debug_struct("RTCDataChannel").field("id", &self.id).field("label", &self.label).finish()
     }
 }
 
 // ── Events ──
 
-pub enum DataChannelEvent { Open, Closed, Message(DataMessage), Error(String) }
+pub enum RTCDataChannelEvent { Open, Closed, Message(RTCDataMessage), Error(String) }
 
-impl std::fmt::Debug for DataChannelEvent {
+impl std::fmt::Debug for RTCDataChannelEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Open => write!(f, "Open"), Self::Closed => write!(f, "Closed"),
@@ -95,17 +95,17 @@ impl std::fmt::Debug for DataChannelEvent {
 }
 
 #[derive(Debug, Clone)]
-pub struct DataMessage { pub data: Vec<u8> }
+pub struct RTCDataMessage { pub data: Vec<u8> }
 
-/// Receiver for DataChannel events.
+/// Receiver for RTCDataChannel events.
 /// Created by spool() — polls the backend's event stream.
-pub struct DataChannelRx {
-    rx: Option<tokio::sync::mpsc::UnboundedReceiver<DataChannelEvent>>,
+pub struct RTCDataChannelRx {
+    rx: Option<tokio::sync::mpsc::UnboundedReceiver<RTCDataChannelEvent>>,
 }
 
-    impl DataChannelRx {
+    impl RTCDataChannelRx {
     #[cfg(feature = "backend-webrtc-rs")]
-    pub(crate) fn new(rx: Option<tokio::sync::mpsc::UnboundedReceiver<DataChannelEvent>>) -> Self {
+    pub(crate) fn new(rx: Option<tokio::sync::mpsc::UnboundedReceiver<RTCDataChannelEvent>>) -> Self {
         Self { rx }
     }
 
@@ -113,7 +113,7 @@ pub struct DataChannelRx {
         Self { rx: None }
     }
 
-    pub async fn recv(&mut self) -> Option<DataChannelEvent> {
+    pub async fn recv(&mut self) -> Option<RTCDataChannelEvent> {
         match &mut self.rx {
             Some(rx) => rx.recv().await,
             None => std::future::pending().await,
@@ -129,20 +129,20 @@ mod tests {
 
     #[test]
     fn stub_data_channel_state_is_closed() {
-        let dc = DataChannel { label: "test".into(), id: 0, backend: Default::default() };
-        assert_eq!(dc.state(), DataChannelState::Closed);
+        let dc = RTCDataChannel { label: "test".into(), id: 0, backend: Default::default() };
+        assert_eq!(dc.state(), RTCDataChannelState::Closed);
     }
 
     #[test]
     fn stub_label_and_id() {
-        let dc = DataChannel { label: "mylabel".into(), id: 42, backend: Default::default() };
+        let dc = RTCDataChannel { label: "mylabel".into(), id: 42, backend: Default::default() };
         assert_eq!(dc.label(), "mylabel");
         assert_eq!(dc.id(), 42);
     }
 
     #[test]
     fn stub_send_is_noop() {
-        let dc = DataChannel { label: "x".into(), id: 0, backend: Default::default() };
+        let dc = RTCDataChannel { label: "x".into(), id: 0, backend: Default::default() };
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
             assert!(dc.send(b"hello").await.is_ok());
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn stub_data_channel_init_defaults() {
-        let init = DataChannelInit::default();
+        let init = RTCDataChannelInit::default();
         assert!(init.ordered);
         assert_eq!(init.max_retransmit_time, None);
         assert_eq!(init.max_retransmits, None);

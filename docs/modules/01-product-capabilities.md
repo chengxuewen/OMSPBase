@@ -12,7 +12,7 @@
 | **视频会议** | 多方音视频通话、SFU/MCU、屏幕共享 | 团队协作 |
 | **推拉流** | RTMP/HLS/SRT 接入与分发、直播转码 | 直播、内容分发 |
 | **监控接入** | ONVIF/GB28181 相机发现与流管理 | 安防、巡检 |
-| **WebRTC 遥操作** | 低延迟视频 + DataChannel 控制 | 车辆遥控、机器人 |
+| **WebRTC 遥操作** | 低延迟视频 + RTCDataChannel 控制 | 车辆遥控、机器人 |
 | **车端推流** | 车辆摄像头推流到云端 | 车联网 |
 | **舱内拉流** | 舱内屏幕观看远程视频 | 远程驾驶 |
 
@@ -74,7 +74,7 @@ TCP 的队头阻塞在实时场景是致命的。Parsec、ToDesk 经验表明 UD
 | webrtc-rs | W3C 兼容 WebRTC、runtime agnostic | Rust |
 | MediaMTX | 协议路由（零转码）、Media-over-QUIC | Go |
 | Parsec | 低延迟远程桌面、GPU 编码管线 | C++ |
-| tether-rally | DataChannel 遥操作二进制协议 | JS/C++ |
+| tether-rally | RTCDataChannel 遥操作二进制协议 | JS/C++ |
 
 ---
 

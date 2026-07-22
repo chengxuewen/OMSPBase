@@ -1,15 +1,15 @@
 //! WebRTC transport module for OMSPBase Host.
 //!
-//! Creates a PeerConnection, establishes an unordered unreliable DataChannel
+//! Creates a RTCPeerConnection, establishes an unordered unreliable RTCDataChannel
 //! named "frames", and exchanges SDP/ICE candidates via the existing signaling WS.
 //!
 //! # Flow
 //! 1. `WebrtcTransport::new(sender, room_id)` — builds PC, creates DC,
 //!    registers ICE handler, creates offer, sends SDP via WS.
 //!    Returns `(Self, mpsc::UnboundedReceiver<DcEvent>)` — the receiver
-//!    yields DataChannel lifecycle events (Open/Closed/Message).
+//!    yields RTCDataChannel lifecycle events (Open/Closed/Message).
 //! 2. The ICE handler sends candidates automatically via the WS sender.
-//! 3. `send_frame(data)` — sends raw bytes through the DataChannel.
+//! 3. `send_frame(data)` — sends raw bytes through the RTCDataChannel.
 //! 4. The caller spawns a task to poll the event receiver.
 
 use std::pin::Pin;
@@ -31,16 +31,16 @@ use webrtc::peer_connection::configuration::RTCConfiguration;
 
 use crate::signaling::WsSender;
 
-/// DataChannel lifecycle events forwarded from callbacks.
+/// RTCDataChannel lifecycle events forwarded from callbacks.
 pub enum DcEvent {
     Open,
     Closed,
     Message(Vec<u8>),
 }
 
-/// WebRTC transport over DataChannel.
+/// WebRTC transport over RTCDataChannel.
 ///
-/// Owns the PeerConnection, DataChannel, and WS sender (for ICE callbacks).
+/// Owns the RTCPeerConnection, RTCDataChannel, and WS sender (for ICE callbacks).
 /// The WS receiver remains with the caller for processing incoming SDP answers.
 ///
 /// After construction, extract the event receiver via the returned tuple
@@ -58,7 +58,7 @@ impl WebrtcTransport {
     /// Create a new WebRTC transport.
     ///
     /// Consumes the WS sender for SDP/ICE exchange.
-    /// Returns the transport and an mpsc receiver for DataChannel events.
+    /// Returns the transport and an mpsc receiver for RTCDataChannel events.
     /// Spawn a task to poll the receiver for lifecycle management.
     pub async fn new(
         ws_sender: WsSender,
@@ -66,7 +66,7 @@ impl WebrtcTransport {
     ) -> Result<(Self, mpsc::UnboundedReceiver<DcEvent>), CoreError> {
         let ws = Arc::new(TokioMutex::new(ws_sender));
 
-        // Create API and PeerConnection
+        // Create API and RTCPeerConnection
         let api = APIBuilder::new().build();
         let config = RTCConfiguration::default();
         let pc = Arc::new(
@@ -75,7 +75,7 @@ impl WebrtcTransport {
                 .map_err(|e| CoreError::PeerConnectionFailure(e.to_string()))?,
         );
 
-        tracing::info!("PeerConnection created");
+        tracing::info!("RTCPeerConnection created");
 
         // Register ICE candidate callback
         {
@@ -88,7 +88,7 @@ impl WebrtcTransport {
                     Box::pin(async move {
                         if let Some(c) = candidate {
                             if let Ok(init) = c.to_json() {
-                                let msg = SignalingMessage::IceCandidate {
+                                let msg = SignalingMessage::RTCIceCandidate {
                                     room_id,
                                     target: None,
                                     candidate: init.candidate,
@@ -108,7 +108,7 @@ impl WebrtcTransport {
             ));
         }
 
-        // Create unordered unreliable DataChannel for low-latency frame delivery
+        // Create unordered unreliable RTCDataChannel for low-latency frame delivery
         let dc = pc
             .create_data_channel(
                 "frames",
@@ -122,7 +122,7 @@ impl WebrtcTransport {
             .map_err(|e| CoreError::PeerConnectionFailure(e.to_string()))?;
 
         tracing::info!(
-            "DataChannel '{}' (id={}) created — unordered, unreliable",
+            "RTCDataChannel '{}' (id={}) created — unordered, unreliable",
             dc.label(),
             dc.id()
         );
@@ -199,9 +199,9 @@ impl WebrtcTransport {
         ))
     }
 
-    /// Send a frame (raw bytes) through the DataChannel.
+    /// Send a frame (raw bytes) through the RTCDataChannel.
     ///
-    /// No-op if DataChannel is not yet open (ponytail: non-fatal for startup race).
+    /// No-op if RTCDataChannel is not yet open (ponytail: non-fatal for startup race).
     pub async fn send_frame(&self, data: &[u8]) -> Result<(), CoreError> {
         if !self.is_open() {
             return Ok(()); // ponytail: DC not open yet, skip silently
@@ -243,13 +243,13 @@ impl WebrtcTransport {
         Ok(())
     }
 
-    /// Get a reference to the underlying DataChannel.
+    /// Get a reference to the underlying RTCDataChannel.
     #[allow(dead_code)]
     pub fn data_channel(&self) -> &Arc<RTCDataChannel> {
         &self.dc
     }
 
-    /// Check if the DataChannel is open.
+    /// Check if the RTCDataChannel is open.
     #[allow(dead_code)]
     pub fn is_open(&self) -> bool {
         self.dc.ready_state() == RTCDataChannelState::Open
@@ -258,7 +258,7 @@ impl WebrtcTransport {
 
 impl Drop for WebrtcTransport {
     fn drop(&mut self) {
-        // ponytail: best-effort close PeerConnection and DataChannel on drop.
+        // ponytail: best-effort close RTCPeerConnection and RTCDataChannel on drop.
         // webrtc-rs RTCPeerConnection does NOT auto-close — ICE sockets and
         // UDP ports persist without explicit close().
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -273,20 +273,20 @@ impl Drop for WebrtcTransport {
     }
 }
 
-/// Run the DataChannel event loop — logs lifecycle events.
+/// Run the RTCDataChannel event loop — logs lifecycle events.
 ///
 /// Call this in a spawned task with the receiver from `WebrtcTransport::new()`.
 pub async fn run_dc_event_loop(mut rx: mpsc::UnboundedReceiver<DcEvent>) {
     loop {
         match rx.recv().await {
             Some(DcEvent::Open) => {
-                tracing::info!("DataChannel opened");
+                tracing::info!("RTCDataChannel opened");
             }
             Some(DcEvent::Message(data)) => {
-                tracing::debug!("DataChannel received {} bytes", data.len());
+                tracing::debug!("RTCDataChannel received {} bytes", data.len());
             }
             Some(DcEvent::Closed) | None => {
-                tracing::info!("DataChannel closed");
+                tracing::info!("RTCDataChannel closed");
                 break;
             }
         }

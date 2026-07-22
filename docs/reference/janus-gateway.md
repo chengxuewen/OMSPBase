@@ -63,7 +63,7 @@ Browser → 1. Create Session (session_id)
 
 ### 2.3 线程模型
 
-- **每个 handle 一个 GMainLoop 线程**（PR #1399, 2018）：替代了旧的 2-threads-per-PeerConnection
+- **每个 handle 一个 GMainLoop 线程**（PR #1399, 2018）：替代了旧的 2-threads-per-RTCPeerConnection
 - **插件辅助线程**（可选）：VideoRoom 和 Streaming 插件支持解耦收包和分发
 - **`event_loops` 池**：可配置的线程池，复用而非每 handle 新建
 
@@ -123,7 +123,7 @@ struct janus_callbacks {
 | Video Call | 1-1 视频通话 |
 | Streaming | 广播 RTSP/RTMP 流到 WebRTC |
 | Record & Play | 录制 WebRTC 流 + 回放 |
-| Text Room | DataChannel 聊天 |
+| Text Room | RTCDataChannel 聊天 |
 | Audio Bridge | MCU 音频混音 |
 | SIP Gateway | WebRTC↔SIP 互通 |
 | Lua/Duktape | Lua/JS 脚本编写插件 |

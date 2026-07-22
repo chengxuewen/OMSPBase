@@ -5,17 +5,17 @@
 
 /// W3C RTCStats with 5 core stat types.
 #[derive(Debug, Clone, serde::Serialize)]
-pub enum RtcStats {
-    PeerConnection(PeerConnectionStats),
-    Transport(TransportStats),
-    Codec(CodecStats),
-    InboundRtp(InboundRtpStats),
-    OutboundRtp(OutboundRtpStats),
+pub enum RTCStats {
+    RTCPeerConnection(RTCPeerConnectionStats),
+    Transport(RTCTransportStats),
+    Codec(RTCCodecStats),
+    InboundRtp(RTCInboundRtpStreamStats),
+    OutboundRtp(RTCOutboundRtpStreamStats),
 }
 
 /// Peer connection statistics.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct PeerConnectionStats {
+pub struct RTCPeerConnectionStats {
     pub id: String,
     pub timestamp: f64,
     pub data_channels_opened: u32,
@@ -24,7 +24,7 @@ pub struct PeerConnectionStats {
 
 /// Transport-level statistics.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct TransportStats {
+pub struct RTCTransportStats {
     pub id: String,
     pub timestamp: f64,
     pub bytes_sent: u64,
@@ -35,7 +35,7 @@ pub struct TransportStats {
 
 /// Codec statistics.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct CodecStats {
+pub struct RTCCodecStats {
     pub id: String,
     pub timestamp: f64,
     pub payload_type: u8,
@@ -46,7 +46,7 @@ pub struct CodecStats {
 
 /// Inbound RTP statistics.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct InboundRtpStats {
+pub struct RTCInboundRtpStreamStats {
     pub id: String,
     pub timestamp: f64,
     pub ssrc: u32,
@@ -62,7 +62,7 @@ pub struct InboundRtpStats {
 
 /// Outbound RTP statistics.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct OutboundRtpStats {
+pub struct RTCOutboundRtpStreamStats {
     pub id: String,
     pub timestamp: f64,
     pub ssrc: u32,

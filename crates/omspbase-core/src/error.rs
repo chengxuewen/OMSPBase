@@ -23,8 +23,8 @@ pub enum CoreError {
     #[error("[1003] ICE connection timeout")]
     IceTimeout,
 
-    /// PeerConnection creation failed
-    #[error("[1004] PeerConnection creation failed: {0}")]
+    /// RTCPeerConnection creation failed
+    #[error("[1004] RTCPeerConnection creation failed: {0}")]
     PeerConnectionFailure(String),
 
     // --- 2xxx: Encoding ---

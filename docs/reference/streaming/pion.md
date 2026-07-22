@@ -27,7 +27,7 @@
 │  安全层        pion/dtls (DTLS 1.2)   pion/srtp (SRTP)          │
 │  数据层        pion/sctp (SCTP)       pion/datachannel           │
 │  媒体层        pion/rtp, pion/rtcp    pion/interceptor (插件管道)│
-│  应用层        pion/webrtc (PeerConnection API)                  │
+│  应用层        pion/webrtc (RTCPeerConnection API)                  │
 │  SFU           pion/ion-sfu (纯 Go SFU)                          │
 │  分布式集群    pion/ion (biz + ISLB + NATS/etcd/redis)           │
 │  音视频处理    pion/ion-avp (write-to-disk, ffmpeg, OpenCV)      │
@@ -61,7 +61,7 @@ Pion 与 libwebrtc (Google Chrome 的 C++ 实现) 的根本区别:
 
 Pion 严格遵循 W3C 规范:
 
-- **webrtc-pc**: PeerConnection API 完整实现
+- **webrtc-pc**: RTCPeerConnection API 完整实现
 - **webrtc-stats**: 统计 API
 - **Plan-B 和 Unified Plan**: 双 SDP 语义支持
 - **Simulcast**: 多层视频编码
@@ -158,14 +158,14 @@ chain := interceptor.NewChain([]interceptor.Interceptor{
 
 ## 3. 关键能力
 
-### 3.1 PeerConnection 完整功能
+### 3.1 RTCPeerConnection 完整功能
 
 - **SDP 生成/解析**: CreateOffer/CreateAnswer/SetLocalDescription/SetRemoteDescription
 - **Track 管理**: AddTrack/RemoveTrack 动态操作
 - **数据通道**: CreateDataChannel, 支持 ondatachannel 事件
 - **ICE 管理**: 完整的 ICE Agent, Trickle ICE, 候选收集和添加
 - **重新协商**: 运行时 AddTrack/RemoveTrack
-- **状态机**: SignalingState, ICEConnectionState, PeerConnectionState 完整状态回调
+- **状态机**: RTCSignalingState, ICEConnectionState, RTCPeerConnectionState 完整状态回调
 - **单端口部署**: ICETransport 单端口多路复用, 适用于 Docker/K8s
 
 ### 3.2 ion-sfu (Selective Forwarding Unit)
@@ -173,10 +173,10 @@ chain := interceptor.NewChain([]interceptor.Interceptor{
 `ionorg/ion-sfu` (v1.11.0) — 纯 Go 实现的高性能 SFU:
 
 **核心能力**:
-- Audio/Video/DataChannel 选择性转发
+- Audio/Video/RTCDataChannel 选择性转发
 - 拥塞控制: TWCC (Transport-Wide CC), REMB, RR/SR
 - Unified Plan 语义
-- Pub/Sub 模式 PeerConnection (O(n) 端口使用)
+- Pub/Sub 模式 RTCPeerConnection (O(n) 端口使用)
 - RFC 6464 音频级别指示 ("X is speaking")
 - gRPC 和 JSON-RPC 双信令接口
 
@@ -185,13 +185,13 @@ chain := interceptor.NewChain([]interceptor.Interceptor{
 ```
 SFU
  ├── Session (房间概念)
- │    ├── Publisher PeerConnection (上行)
+ │    ├── Publisher RTCPeerConnection (上行)
  │    │    └── Router (按 trackID 路由)
  │    │         ├── Receiver (接收端包装)
  │    │         └── DownTrack[] (下行轨)
- │    ├── Subscriber PeerConnection[] (下行)
+ │    ├── Subscriber RTCPeerConnection[] (下行)
  │    │    └── DownTrack (WriteRTP)
- │    └── DataChannel (中间件管道, HTTP 风格)
+ │    └── RTCDataChannel (中间件管道, HTTP 风格)
  │         └── KeepAlive, SubscriberAPI 等中间件
  ├── WebRTCTransportConfig (全局配置)
  └── TURN Server (可选内置)
@@ -395,7 +395,7 @@ go build -o my-webrtc-app .
 - **IoT/监控**: RTSP → WebRTC 桥接 (deepch/RTSPtoWebRTC)
 - **直播推流**: OBS WHIP 推入 → 多观众 WHEP 拉出
 - **远程桌面/游戏串流**: 1:1 低延迟 WebRTC
-- **文件传输**: WebTorrent / IPFS 基于 DataChannel
+- **文件传输**: WebTorrent / IPFS 基于 RTCDataChannel
 
 ---
 

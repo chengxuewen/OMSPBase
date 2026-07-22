@@ -154,7 +154,7 @@
 - Prometheus 原生指标
 
 **客户端 SDK 技术栈**：
-- **Rust SDK**（crates.io livekit v0.7.49）：跨平台核心 SDK。作为 Unity、iOS、Android 等平台 SDK 的底层共享基础。功能：发布/订阅轨道、Simulcast、SVC、DataChannel、硬件编解码（VideoToolbox H.264/H.265、NVidia NVENC、AMD AMF）。截至 2026-07 不支持 Adaptive Streaming 和 Dynacast
+- **Rust SDK**（crates.io livekit v0.7.49）：跨平台核心 SDK。作为 Unity、iOS、Android 等平台 SDK 的底层共享基础。功能：发布/订阅轨道、Simulcast、SVC、RTCDataChannel、硬件编解码（VideoToolbox H.264/H.265、NVidia NVENC、AMD AMF）。截至 2026-07 不支持 Adaptive Streaming 和 Dynacast
 - **TypeScript/JavaScript**：Web 客户端 + React 组件库 + React Native SDK
 - **Swift/Kotlin**：iOS/Android 原生 SDK + SwiftUI/Compose 组件库
 - **Flutter**：跨平台移动端 SDK
@@ -185,7 +185,7 @@
 - **AI Agent 一等公民**：LiveKit 是唯一将 AI Agent 作为核心平台能力的 SFU。Agent 作为特殊参与者（kind: "agent"）加入 Room——发布音视频、订阅参与者轨道。Plugin 系统连接主流 AI 提供商（OpenAI、ElevenLabs、Deepgram、Cartesia 等）。典型 AI 管线：音频轨道→STT Plugin→LLM Plugin→TTS Plugin→音频轨道。Agent 可部署在 Cloud 或自建服务器上
 - **Dynacast（按需编码）**：这是 LiveKit 最体现「有观点」设计哲学的特性。发布者编码每层视频都有 CPU 和带宽成本。当某一层没有任何订阅者时（如在 50 人会议中只有 5 人看了你的高分辨率视频），继续编码是浪费。Dynacast 自动通知发布者暂停无订阅者的编码层，有新订阅者时自动恢复。在大房间场景中节省 30-50% 编码 CPU 和上行带宽
 - **Selective Subscription（选择性订阅）**：客户端可动态订阅/取消订阅特定参与者的特定轨道（如「只看发言人A的屏幕共享+发言人B的摄像头」）。不订阅的轨道完全不消耗下行带宽。配合 Speaker Detection 实现「只看发言人」模式
-- **Data Track / Data Blob**（v1.11+）：Data Track——结构化数据通道（类似 WebRTC DataChannel 的高级封装）。Data Blob（v1.13）——异步参与者属性更新，不依赖 DataChannel 连接状态。所有元数据上限 512 KiB
+- **Data Track / Data Blob**（v1.11+）：Data Track——结构化数据通道（类似 WebRTC RTCDataChannel 的高级封装）。Data Blob（v1.13）——异步参与者属性更新，不依赖 RTCDataChannel 连接状态。所有元数据上限 512 KiB
 - **WHIP/WHEP 标准化推拉流**：OBS Studio、FFmpeg、GStreamer 可通过 HTTP POST `/whip` 推流进入 LiveKit Room。标准浏览器可通过 HTTP GET `/whep` 播放离开 LiveKit Room 的流。这是向 IETF 标准对齐的重要步骤
 - **NodeDrainer（优雅下线）**：运维友好的节点下线机制。向节点发送 drain 信号后，节点停止接受新房间，逐步迁移现有房间到健康节点，最后安全关闭。零中断运维
 - **Mock API Server**（v1.13.3）：内置模拟 API 服务器。开发者可在无真实 LiveKit 实例的情况下验证 Server SDK 集成。开发体验细节到位
@@ -216,13 +216,13 @@
 
 | SDK | 平台 | 功能完整度 |
 |-----|------|-----------|
-| Web (JS/TS) | 浏览器 | ✅ 完整（发布/订阅/Simulcast/SVC/DataChannel/屏幕共享） |
+| Web (JS/TS) | 浏览器 | ✅ 完整（发布/订阅/Simulcast/SVC/RTCDataChannel/屏幕共享） |
 | React | Web 组件 | ✅ 完整组件库（PreJoin/Room/Controls/Chat） |
 | React Native | 移动端跨平台 | ✅ 完整 |
 | Flutter | 移动端跨平台 | ✅ 完整 |
 | iOS (Swift) | Apple 原生 | ✅ 完整 + SwiftUI 组件库 |
 | Android (Kotlin) | Google 原生 | ✅ 完整 + Compose 组件库 |
-| Rust | 跨平台核心 | ✅ 发布/订阅/Simulcast/SVC/DataChannel/GPU编码 |
+| Rust | 跨平台核心 | ✅ 发布/订阅/Simulcast/SVC/RTCDataChannel/GPU编码 |
 | Python | AI/后端 | ✅ Agent 开发主语言 |
 | Node.js | 后端/Agent | ✅ Agent 开发 |
 | Unity (含 WebGL) | 游戏引擎 | ✅ 完整 |
@@ -298,7 +298,7 @@
 
 ## 6. 产品特色
 
-1. **AI Agent 原生集成——唯一将 AI 作为平台能力的 SFU**：LiveKit 不是「SFU 支持 AI 插件」——它的架构从设计之初就包含 Agent 作为一等参与者。Agent Worker/Dispatcher/Job 系统是核心架构的一部分。Python/Node.js Plugin 系统连接 OpenAI、ElevenLabs、Deepgram、Cartesia 等。AI Agent 可以像真人一样加入房间——发布音频（TTS）、订阅参与者音频（转录）、收听 DataChannel 消息。这是 2026 年实时通信基础设施的前沿演进方向
+1. **AI Agent 原生集成——唯一将 AI 作为平台能力的 SFU**：LiveKit 不是「SFU 支持 AI 插件」——它的架构从设计之初就包含 Agent 作为一等参与者。Agent Worker/Dispatcher/Job 系统是核心架构的一部分。Python/Node.js Plugin 系统连接 OpenAI、ElevenLabs、Deepgram、Cartesia 等。AI Agent 可以像真人一样加入房间——发布音频（TTS）、订阅参与者音频（转录）、收听 RTCDataChannel 消息。这是 2026 年实时通信基础设施的前沿演进方向
 
 2. **Rust SDK 跨平台核心模式——与 OMSPBase 战略完美匹配**：LiveKit 的 Rust SDK 不仅是给 Rust 用户用的。它是整个跨平台 SDK 生态的底层核心——Rust 封装信令和 WebRTC 业务逻辑，C FFI 导出接口，Unity/Swift/Kotlin/Flutter 通过 FFI 调用。这就是 OMSPBase 的 `native-core`（Rust → napi-rs → Node.js / C-FFI → AUDESYS）模式的活证据——这个模式不是理论，是 LiveKit 已经在生产环境中每天运行的基础设施
 

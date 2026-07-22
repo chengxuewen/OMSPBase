@@ -34,7 +34,7 @@
 
 ---
 
-## 三、WebRTC DataChannel 协议（遥操作）
+## 三、WebRTC RTCDataChannel 协议（遥操作）
 
 ### 3.1 通道分离策略
 
@@ -98,6 +98,6 @@ OMSPBase 支持三个 WebRTC 后端，通过 Cargo feature gate 切换：
 
 ### 4.1 webrtc-sys（默认后端）
 
-webrtc-sys 通过 FFI 绑定 Google libwebrtc，提供完整 PeerConnection + RTP Track API。
+webrtc-sys 通过 FFI 绑定 Google libwebrtc，提供完整 RTCPeerConnection + RTP Track API。
 作为默认 Cargo feature (`default = ["webrtc-libwebrtc"]`) 编译。
 参见 `crates/webrtc-sys/`。

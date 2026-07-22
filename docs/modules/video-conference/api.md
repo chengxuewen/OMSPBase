@@ -251,7 +251,7 @@ interface ConferenceConfig {
   token: string;              // 认证 Token
 
   // 可选
-  iceServers?: IceServer[];   // ICE 服务器
+  iceServers?: RTCIceServer[];   // ICE 服务器
   videoCodec?: string;        // 默认视频编码
   audioCodec?: string;        // 默认音频编码
   simulcast?: boolean;        // Simulcast

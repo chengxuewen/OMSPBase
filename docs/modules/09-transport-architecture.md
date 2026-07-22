@@ -1,6 +1,11 @@
 # 传输架构与 trait 设计
 
-> Phase 0 架构定义 — MediaTransport trait、三后端分发、sans-I/O 运行循环。参考 webrtc-kit 的 trait 抽象 + str0m 的 sans-I/O 设计。默认后端 webrtc-sys（libwebrtc C++ FFI 包装）。
+
+
+> Phase 0 架构定义 — MediaTransport trait、双后端 + 测试桩分发、sans-I/O 运行循环。参考 webrtc-kit 的 trait 抽象 + str0m 的 sans-I/O 设计。默认后端 webrtc-sys（libwebrtc C++ FFI 包装）。str0m 推迟至 Phase 2+（Embed 场景）。
+
+**命名约定**: 本文档描述 sans-I/O 内部传输层，方法使用 Rust snake_case 惯例（如 create_offer）。对外 omspbase-webrtc W3C API 层使用 camelCase（如 createOffer），RTC 前缀类型名（如 RTCPeerConnection）。详见 docs/modules/17-webrtc-crate.md。
+
 
 ---
 
@@ -11,23 +16,23 @@
 │                  MediaTransport trait (sans-I/O)             │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  backend-str0m          backend-webrtc-sys   backend-webrtc-rs │
-│  backend-str0m          backend-webrtc-sys   backend-webrtc-rs │
-│  (Embed/LAN)            (默认: webrtc-sys)  (未来: W3C API) │
+│  backend-webrtc-sys  (默认)   backend-webrtc-rs   stub      │
 │                                                             │
-│  sans-I/O 原生          C++ libwebrtc FFI    tokio async     │
-│  ~30K LOC                ~1M+ LOC             ~80K LOC       │
-│  W3C不完全兼容           完整 W3C             完整 W3C (D27)  │
-│  零外部依赖              cmake + Corrosion    纯 Rust         │
+│  C++ libwebrtc FFI             tokio async          测试桩   │
+│  ~1M+ LOC                      ~80K LOC             无依赖   │
+│  完整 W3C                      完整 W3C (D27)       no-op    │
+│  cmake + Corrosion             纯 Rust              编译用   │
 │                                                             │
+│  str0m → Phase 2+ (Embed/LAN, sans-I/O 原生, ~30K LOC, 零外部依赖) │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-| 后端 | 编译特性 | 场景 | 运行时依赖 |
-|------|---------|------|-----------|
-| libwebrtc | `backend-webrtc-sys` (默认) | 公网遥控, 弱网穿透 | webrtc-sys → libwebrtc.so (cmake 构建) |
-| str0m | `backend-str0m` | AUDESYS Embed, 局域网 P2P | 无 (sans-I/O) |
-| webrtc-rs | `backend-webrtc-rs` | 未来 Embed 升级 | tokio (可选) |
+| 后端 | 编译特性 | 场景 | Phase |
+|------|---------|------|-------|
+| libwebrtc | `backend-webrtc-sys` (默认) | 公网遥控, 弱网穿透 | Phase 0 |
+| webrtc-rs | `backend-webrtc-rs` | 未来 Embed 升级 | Phase 0 (struct 骨架) |
+| stub | 无 feature 时 | 开发/测试/编译检查 | Phase 0 |
+| str0m | `backend-str0m` | AUDESYS Embed, 局域网 P2P | Phase 2+ |
 
 ---
 
@@ -36,7 +41,7 @@
 ### 2.1 工厂 trait
 
 ```rust
-/// 传输工厂（webrtc-kit 的 PeerConnectionFactory 模式）。
+/// 传输工厂（webrtc-kit 的 RTCPeerConnectionFactory 模式）。
 
 pub trait MediaTransportFactory: Send + Sync {
     fn backend_name(&self) -> &str;
@@ -48,7 +53,7 @@ pub trait MediaTransportFactory: Send + Sync {
 }
 
 pub trait TransportCallbacks {
-    fn on_ice_candidate(&self, candidate: &IceCandidate);
+    fn on_ice_candidate(&self, candidate: &RTCIceCandidate);
     fn on_connection_state_change(&self, state: ConnectionState);
     fn on_track_added(&self, track: &MediaTrackInfo);
     fn on_data_channel_open(&self, label: &str);
@@ -59,7 +64,7 @@ pub trait TransportCallbacks {
 ### 2.2 传输 trait（sans-I/O 优先）
 
 ```rust
-/// 传输实例。参考 str0m 的 Rtc 状态机 + webrtc-rs 的 PeerConnection。
+/// 传输实例。参考 str0m 的 Rtc 状态机 + webrtc-rs 的 RTCPeerConnection。
 /// sans-I/O 优先 — Embed 场景无需 tokio。
 
 pub trait MediaTransport: Send {
@@ -73,14 +78,14 @@ pub trait MediaTransport: Send {
 
     // ── SDP 协商 ──
 
-    fn create_offer(&self) -> Result<SessionDescription>;
-    fn create_answer(&self) -> Result<SessionDescription>;
-    fn set_local_description(&self, sd: &SessionDescription) -> Result<()>;
-    fn set_remote_description(&self, sd: &SessionDescription) -> Result<()>;
+    fn create_offer(&self) -> Result<RTCSessionDescription>;
+    fn create_answer(&self) -> Result<RTCSessionDescription>;
+    fn set_local_description(&self, sd: &RTCSessionDescription) -> Result<()>;
+    fn set_remote_description(&self, sd: &RTCSessionDescription) -> Result<()>;
 
     // ── ICE ──
 
-    fn add_ice_candidate(&self, candidate: &IceCandidate) -> Result<()>;
+    fn add_ice_candidate(&self, candidate: &RTCIceCandidate) -> Result<()>;
 
     // ── 媒体轨道 ──
 
@@ -113,7 +118,7 @@ pub enum TransportOutput {
 pub enum TransportEvent {
     Connected,
     Disconnected,
-    IceStateChanged(IceConnectionState),
+    IceStateChanged(RTCIceConnectionState),
     TrackAdded(MediaTrackInfo),
     TrackData(MediaData),
     ChannelOpen(String),
@@ -161,14 +166,14 @@ libwebrtc VideoTrackSource::write_frame()
 
 **关键边界**: GStreamer 产出的字节边界在 `TrackLocal::write()` 处被消费，此后的 RTP 封装和加密完全由 libwebrtc 内部处理。用户代码只需提供编码帧的 `&[u8]`。
 
-### 2.6 DataChannel 降级说明 (D155)
+### 2.6 RTCDataChannel 降级说明 (D155)
 
-在 webrtc-sys 后端中，DataChannel 降级为**仅控制信令**用途：
+在 webrtc-sys 后端中，RTCDataChannel 降级为**仅控制信令**用途：
 - 键盘/鼠标/手柄输入事件
 - 剪贴板同步
 - 文件传输通过 HTTP multipart（非 DC）
 
-原因是 libwebrtc 的 SCTP DataChannel 在弱网下重传策略不够灵活，对大块数据传输体验不佳。Phase 1 遥控座舱中，DC 仅承载 `<1KB` 的控制命令帧。
+原因是 libwebrtc 的 SCTP RTCDataChannel 在弱网下重传策略不够灵活，对大块数据传输体验不佳。Phase 1 遥控座舱中，DC 仅承载 `<1KB` 的控制命令帧。
 
 ### 2.7 GStreamer→WebRTC 字节边界 (D155)
 
@@ -206,6 +211,7 @@ libwebrtc VideoTrackSource::write_frame()
 pub fn create_factory(
     config: &TransportConfig,
 ) -> Option<Box<dyn MediaTransportFactory>> {
+    // str0m: Phase 2+ — see section 一 for backend table
     #[cfg(feature = "backend-str0m")]
     { return Some(Box::new(str0m_backend::Str0mFactory::new())); }
 
@@ -225,9 +231,11 @@ pub fn create_factory(
 // 参考 webrtc-kit 的 compile_error! 模式
 
 #[cfg(any(
-    all(feature = "backend-str0m", feature = "backend-webrtc-sys"),
-    all(feature = "backend-str0m", feature = "backend-webrtc-rs"),
+    // str0m guards (Phase 2+):
+    // all(feature = "backend-str0m", feature = "backend-webrtc-sys"),
+    // all(feature = "backend-str0m", feature = "backend-webrtc-rs"),
     all(feature = "backend-webrtc-sys", feature = "backend-webrtc-rs"),
+))]
 compile_error!("Only one WebRTC backend can be enabled at a time");
 ```
 
@@ -319,7 +327,7 @@ impl App {
 
 ```rust
 pub struct TransportConfig {
-    pub ice_servers: Vec<IceServer>,
+    pub ice_servers: Vec<RTCIceServer>,
     pub ice_transport_policy: IcePolicy,     // All, Relay
     pub bundle_policy: BundlePolicy,         // Balanced, MaxBundle
     pub rtcp_mux_policy: RtcpMuxPolicy,
@@ -378,11 +386,11 @@ pub struct CodecConfig {
 
 | OMSPBase 概念 | webrtc-kit | str0m | mediasoup-rust |
 |---------------|-----------|-------|----------------|
-| MediaTransportFactory | PeerConnectionFactory | — | Router |
-| MediaTransport | PeerConnection | Rtc | Transport trait |
+| MediaTransportFactory | RTCPeerConnectionFactory | — | Router |
+| MediaTransport | RTCPeerConnection | Rtc | Transport trait |
 | handle_input | — (callback-based) | handle_input | — (channel-based) |
 | poll_output | — | poll_output | — (async) |
 | TransportOutput | — (event callbacks) | Output enum | — (async) |
 | MediaTrack | VideoTrack trait | Writer handle | Producer/Consumer |
-| 后端分发 | RtcEngine::create_factory (cfg) | 无 (单一实现) | 无 (C++ worker) |
+| 后端分发 | RTCEngine::create_factory (cfg) | 无 (单一实现) | 无 (C++ worker) |
 | sans-I/O 合约 | 无 (回调驱动) | 核心设计原则 | 无 (channel IPC) |

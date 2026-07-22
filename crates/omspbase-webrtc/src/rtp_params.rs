@@ -2,11 +2,11 @@
 //!
 //! Ported from webrtc-kit rtc/core.rs.
 //! Models RTP codec parameters, encoding parameters, header extensions,
-//! RTCP parameters, and the top-level RtpParameters struct.
+//! RTCP parameters, and the top-level RTCRtpParameters struct.
 
 /// W3C RTCRtpCodecParameters
 #[derive(Debug, Clone)]
-pub struct RtpCodecParameters {
+pub struct RTCRtpCodecParameters {
     pub mime_type: String, // "video/H264", "video/VP8", etc.
     pub payload_type: u8,
     pub clock_rate: u32,
@@ -16,7 +16,7 @@ pub struct RtpCodecParameters {
 
 /// W3C RTCRtpEncodingParameters
 #[derive(Debug, Clone)]
-pub struct RtpEncodingParameters {
+pub struct RTCRtpEncodingParameters {
     pub ssrc: Option<u64>,
     pub active: bool,
     pub max_bitrate: Option<u64>,
@@ -25,7 +25,7 @@ pub struct RtpEncodingParameters {
     pub rid: Option<String>,
 }
 
-impl Default for RtpEncodingParameters {
+impl Default for RTCRtpEncodingParameters {
     fn default() -> Self {
         Self {
             ssrc: None,
@@ -40,7 +40,7 @@ impl Default for RtpEncodingParameters {
 
 /// W3C RTCRtpHeaderExtensionParameters
 #[derive(Debug, Clone)]
-pub struct RtpHeaderExtensionParameters {
+pub struct RTCRtpHeaderExtensionParameters {
     pub uri: String,
     pub id: u16,
     pub encrypted: bool,
@@ -48,7 +48,7 @@ pub struct RtpHeaderExtensionParameters {
 
 /// W3C RTCRtcpParameters
 #[derive(Debug, Clone, Default)]
-pub struct RtcpParameters {
+pub struct RTCRtcpParameters {
     pub cname: Option<String>,
     /// When true, indicates reduced-size RTCP.
     #[allow(dead_code)]
@@ -57,10 +57,10 @@ pub struct RtcpParameters {
 
 /// W3C RTCRtpParameters
 #[derive(Debug, Clone, Default)]
-pub struct RtpParameters {
+pub struct RTCRtpParameters {
     pub transaction_id: String,
-    pub codecs: Vec<RtpCodecParameters>,
-    pub encodings: Vec<RtpEncodingParameters>,
-    pub header_extensions: Vec<RtpHeaderExtensionParameters>,
-    pub rtcp: RtcpParameters,
+    pub codecs: Vec<RTCRtpCodecParameters>,
+    pub encodings: Vec<RTCRtpEncodingParameters>,
+    pub header_extensions: Vec<RTCRtpHeaderExtensionParameters>,
+    pub rtcp: RTCRtcpParameters,
 }

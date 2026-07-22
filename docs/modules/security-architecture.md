@@ -7,7 +7,7 @@
 | 类别 | 威胁 | 缓解 |
 |------|------|------|
 | Spoofing | 伪造对等点身份 | JWT + mTLS |
-| Tampering | 篡改控制指令 | DataChannel HMAC |
+| Tampering | 篡改控制指令 | RTCDataChannel HMAC |
 | Repudiation | 否认操作 | 审计日志 |
 | Info Disclosure | 信令窃听 | TLS 1.3 |
 | DoS | 信令洪泛 | 速率限制 |

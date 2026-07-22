@@ -11,7 +11,7 @@
 mod common;
 use common::loopback::{create_connected_pair, generate_test_frame, FpsCounter};
 
-use omspbase_webrtc::peer::PeerConnectionFactory;
+use omspbase_webrtc::peer::RTCPeerConnectionFactory;
 use omspbase_webrtc::track::{TrackKind, TrackRef};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -39,9 +39,9 @@ fn loopback_sdp_exchange_succeeds() {
     rt.block_on(async {
         let (pc1, pc2) = create_connected_pair().await.expect("connect");
         // After SDP exchange, signaling state should be stable
-        use omspbase_webrtc::peer::SignalingState;
-        assert_eq!(pc1.signaling_state(), SignalingState::Stable);
-        assert_eq!(pc2.signaling_state(), SignalingState::Stable);
+        use omspbase_webrtc::peer::RTCSignalingState;
+        assert_eq!(pc1.signaling_state(), RTCSignalingState::Stable);
+        assert_eq!(pc2.signaling_state(), RTCSignalingState::Stable);
     });
 }
 
@@ -185,11 +185,11 @@ fn loopback_close_connects_gracefully() {
         pc2.close().await;
 
         // Verify closed state
-        use omspbase_webrtc::peer::PeerConnectionState;
+        use omspbase_webrtc::peer::RTCPeerConnectionState;
         assert!(
             matches!(
                 pc1.connection_state(),
-                PeerConnectionState::Closed
+                RTCPeerConnectionState::Closed
             ),
             "pc1 should be Closed after close()"
         );

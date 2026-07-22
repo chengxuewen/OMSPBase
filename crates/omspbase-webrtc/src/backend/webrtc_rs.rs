@@ -7,16 +7,16 @@ use super::DcBackend;
 use super::PcBackend;
 use super::TrackWriteBackend;
 use crate::channel::{
-    DataChannel as PubDataChannel, DataChannelEvent, DataChannelInit,
-    DataChannelRx, DataChannelState, DataMessage,
+    RTCDataChannel as PubDataChannel, RTCDataChannelEvent, RTCDataChannelInit,
+    RTCDataChannelRx, RTCDataChannelState, RTCDataMessage,
 };
 use crate::peer::{
-    AnswerOptions, IceCandidate, OfferOptions,
-    IceConnectionState, IceGatheringState, PeerConnectionState, SignalingState,
+    RTCAnswerOptions, RTCIceCandidate, RTCOfferOptions,
+    RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState,
 };
-use crate::sdp::{SdpType, SessionDescription};
-use crate::track::{AudioTrackConfig, TrackKind};
-use crate::RtcError;
+use crate::sdp::{RTCSdpType, RTCSessionDescription};
+use crate::track::{RTCAudioTrackConfig, TrackKind};
+use crate::RTCError;
 
 // ── WebrtcRsPc ──
 
@@ -72,13 +72,13 @@ impl WebrtcRsPc {
     pub(crate) async fn create_data_channel(
         &self,
         label: &str,
-        _init: DataChannelInit,
-    ) -> Result<PubDataChannel, RtcError> {
+        _init: RTCDataChannelInit,
+    ) -> Result<PubDataChannel, RTCError> {
         let dc = self
             .inner
             .create_data_channel(label, None)
             .await
-            .map_err(|e| RtcError::DataChannel(e.to_string()))?;
+            .map_err(|e| RTCError::RTCDataChannel(e.to_string()))?;
         let id = dc.id() as i32;
         Ok(PubDataChannel {
             label: label.to_string(),
@@ -89,63 +89,63 @@ impl WebrtcRsPc {
 }
 
 impl PcBackend for WebrtcRsPc {
-    async fn create_offer(&self, options: &OfferOptions) -> Result<SessionDescription, RtcError> {
+    async fn create_offer(&self, options: &RTCOfferOptions) -> Result<RTCSessionDescription, RTCError> {
         let mut opts = webrtc::peer_connection::offer_answer_options::RTCOfferOptions::default();
         if options.ice_restart {
             opts.ice_restart = true;
         }
         let sdp = self.inner.create_offer(Some(opts)).await?;
-        Ok(SessionDescription {
-            sdp_type: SdpType::Offer,
+        Ok(RTCSessionDescription {
+            sdp_type: RTCSdpType::Offer,
             sdp: sdp.sdp,
         })
     }
 
-    async fn create_answer(&self, _: &AnswerOptions) -> Result<SessionDescription, RtcError> {
+    async fn create_answer(&self, _: &RTCAnswerOptions) -> Result<RTCSessionDescription, RTCError> {
         let sdp = self.inner.create_answer(None).await?;
-        Ok(SessionDescription {
-            sdp_type: SdpType::Answer,
+        Ok(RTCSessionDescription {
+            sdp_type: RTCSdpType::Answer,
             sdp: sdp.sdp,
         })
     }
 
-    async fn set_local_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
+    async fn set_local_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
         let sdp = match desc.sdp_type {
-            SdpType::Offer => {
+            RTCSdpType::Offer => {
                 webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(
                     desc.sdp.clone(),
                 )?
             }
-            SdpType::Answer => {
+            RTCSdpType::Answer => {
                 webrtc::peer_connection::sdp::session_description::RTCSessionDescription::answer(
                     desc.sdp.clone(),
                 )?
             }
-            _ => return Err(RtcError::Sdp("unsupported SDP type".into())),
+            _ => return Err(RTCError::Sdp("unsupported SDP type".into())),
         };
         self.inner.set_local_description(sdp).await?;
         Ok(())
     }
 
-    async fn set_remote_description(&self, desc: &SessionDescription) -> Result<(), RtcError> {
+    async fn set_remote_description(&self, desc: &RTCSessionDescription) -> Result<(), RTCError> {
         let sdp = match desc.sdp_type {
-            SdpType::Offer => {
+            RTCSdpType::Offer => {
                 webrtc::peer_connection::sdp::session_description::RTCSessionDescription::offer(
                     desc.sdp.clone(),
                 )?
             }
-            SdpType::Answer => {
+            RTCSdpType::Answer => {
                 webrtc::peer_connection::sdp::session_description::RTCSessionDescription::answer(
                     desc.sdp.clone(),
                 )?
             }
-            _ => return Err(RtcError::Sdp("unsupported SDP type".into())),
+            _ => return Err(RTCError::Sdp("unsupported SDP type".into())),
         };
         self.inner.set_remote_description(sdp).await?;
         Ok(())
     }
 
-    async fn add_ice_candidate(&self, candidate: &IceCandidate) -> Result<(), RtcError> {
+    async fn add_ice_candidate(&self, candidate: &RTCIceCandidate) -> Result<(), RTCError> {
         let c = webrtc::ice_transport::ice_candidate::RTCIceCandidateInit {
             candidate: candidate.candidate.clone(),
             sdp_mid: candidate.sdp_mid.clone(),
@@ -156,49 +156,49 @@ impl PcBackend for WebrtcRsPc {
         Ok(())
     }
 
-    fn connection_state(&self) -> PeerConnectionState {
+    fn connection_state(&self) -> RTCPeerConnectionState {
         use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState::*;
         match self.inner.connection_state() {
-            New => PeerConnectionState::New,
-            Connecting => PeerConnectionState::Connecting,
-            Connected => PeerConnectionState::Connected,
-            Disconnected => PeerConnectionState::Disconnected,
-            Failed => PeerConnectionState::Failed,
-            Closed => PeerConnectionState::Closed,
-            _ => PeerConnectionState::New,
+            New => RTCPeerConnectionState::New,
+            Connecting => RTCPeerConnectionState::Connecting,
+            Connected => RTCPeerConnectionState::Connected,
+            Disconnected => RTCPeerConnectionState::Disconnected,
+            Failed => RTCPeerConnectionState::Failed,
+            Closed => RTCPeerConnectionState::Closed,
+            _ => RTCPeerConnectionState::New,
         }
     }
 
-    fn ice_connection_state(&self) -> IceConnectionState {
+    fn ice_connection_state(&self) -> RTCIceConnectionState {
         use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::*;
         match self.inner.ice_connection_state() {
-            New => IceConnectionState::New,
-            Checking => IceConnectionState::Checking,
-            Connected => IceConnectionState::Connected,
-            Completed => IceConnectionState::Completed,
-            Failed => IceConnectionState::Failed,
-            Disconnected => IceConnectionState::Disconnected,
-            Closed => IceConnectionState::Closed,
-            _ => IceConnectionState::New,
+            New => RTCIceConnectionState::New,
+            Checking => RTCIceConnectionState::Checking,
+            Connected => RTCIceConnectionState::Connected,
+            Completed => RTCIceConnectionState::Completed,
+            Failed => RTCIceConnectionState::Failed,
+            Disconnected => RTCIceConnectionState::Disconnected,
+            Closed => RTCIceConnectionState::Closed,
+            _ => RTCIceConnectionState::New,
         }
     }
 
-    fn ice_gathering_state(&self) -> IceGatheringState {
+    fn ice_gathering_state(&self) -> RTCIceGatheringState {
         use webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState::*;
         match self.inner.ice_gathering_state() {
-            Unspecified | New => IceGatheringState::New,
-            Gathering => IceGatheringState::Gathering,
-            Complete => IceGatheringState::Complete,
+            Unspecified | New => RTCIceGatheringState::New,
+            Gathering => RTCIceGatheringState::Gathering,
+            Complete => RTCIceGatheringState::Complete,
         }
     }
 
-    fn signaling_state(&self) -> SignalingState {
+    fn signaling_state(&self) -> RTCSignalingState {
         use webrtc::peer_connection::signaling_state::RTCSignalingState::*;
         match self.inner.signaling_state() {
-            Stable => SignalingState::Stable,
-            HaveLocalOffer => SignalingState::HaveLocalOffer,
-            Closed => SignalingState::Closed,
-            _ => SignalingState::Stable,
+            Stable => RTCSignalingState::Stable,
+            HaveLocalOffer => RTCSignalingState::HaveLocalOffer,
+            Closed => RTCSignalingState::Closed,
+            _ => RTCSignalingState::Stable,
         }
     }
 
@@ -228,58 +228,58 @@ impl WebrtcRsDc {
     }
 }
 impl DcBackend for WebrtcRsDc {
-    fn state(&self) -> DataChannelState {
+    fn state(&self) -> RTCDataChannelState {
         use webrtc::data_channel::data_channel_state::RTCDataChannelState::*;
         match self.inner.ready_state() {
-            Connecting => DataChannelState::Connecting,
-            Open => DataChannelState::Open,
-            Closing => DataChannelState::Closing,
-            Closed => DataChannelState::Closed,
-            _ => DataChannelState::Closed,
+            Connecting => RTCDataChannelState::Connecting,
+            Open => RTCDataChannelState::Open,
+            Closing => RTCDataChannelState::Closing,
+            Closed => RTCDataChannelState::Closed,
+            _ => RTCDataChannelState::Closed,
         }
     }
 
-    async fn send(&self, data: &[u8]) -> Result<(), RtcError> {
+    async fn send(&self, data: &[u8]) -> Result<(), RTCError> {
         let b = bytes::Bytes::copy_from_slice(data);
         self.inner
             .send(&b)
             .await
             .map(|_| ())
-            .map_err(|e| RtcError::DataChannel(e.to_string()))
+            .map_err(|e| RTCError::RTCDataChannel(e.to_string()))
     }
 
-    async fn send_text(&self, text: &str) -> Result<(), RtcError> {
+    async fn send_text(&self, text: &str) -> Result<(), RTCError> {
         self.inner
             .send_text(text)
             .await
             .map(|_| ())
-            .map_err(|e| RtcError::DataChannel(e.to_string()))
+            .map_err(|e| RTCError::RTCDataChannel(e.to_string()))
     }
 
-    async fn spool(&self) -> DataChannelRx {
+    async fn spool(&self) -> RTCDataChannelRx {
         let dc = self.inner.clone();
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let tx2 = tx.clone();
         dc.on_open(Box::new(move || {
-            let _ = tx2.send(DataChannelEvent::Open);
+            let _ = tx2.send(RTCDataChannelEvent::Open);
             Box::pin(async {})
         }));
         let tx2 = tx.clone();
         dc.on_close(Box::new(move || {
-            let _ = tx2.send(DataChannelEvent::Closed);
+            let _ = tx2.send(RTCDataChannelEvent::Closed);
             Box::pin(async {})
         }));
         let tx2 = tx.clone();
         dc.on_message(Box::new(move |msg| {
             let data = msg.data.to_vec();
-            let _ = tx2.send(DataChannelEvent::Message(DataMessage { data }));
+            let _ = tx2.send(RTCDataChannelEvent::Message(RTCDataMessage { data }));
             Box::pin(async {})
         }));
         dc.on_error(Box::new(move |err| {
-            let _ = tx.send(DataChannelEvent::Error(err.to_string()));
+            let _ = tx.send(RTCDataChannelEvent::Error(err.to_string()));
             Box::pin(async {})
         }));
-        DataChannelRx::new(Some(rx))
+        RTCDataChannelRx::new(Some(rx))
     }
 
     async fn close(&mut self) {
@@ -315,8 +315,8 @@ impl TrackWriteBackend for WebrtcRsTrack {
         &self,
         data: &[u8],
         _kind: TrackKind,
-        audio_config: Option<&AudioTrackConfig>,
-    ) -> Result<(), RtcError> {
+        audio_config: Option<&RTCAudioTrackConfig>,
+    ) -> Result<(), RTCError> {
         if let Some(ref track) = self.inner {
             // ponytail: audio uses config frame duration, video uses 30fps
             let duration_ms = audio_config
@@ -330,7 +330,7 @@ impl TrackWriteBackend for WebrtcRsTrack {
             track
                 .write_sample(&sample)
                 .await
-                .map_err(|e| RtcError::Track(e.to_string()))?;
+                .map_err(|e| RTCError::Track(e.to_string()))?;
         }
         Ok(())
     }
@@ -358,9 +358,9 @@ impl Default for WebrtcRsFactory {
 impl WebrtcRsFactory {
     pub(crate) async fn create_peer_connection(
         &self,
-        config: crate::peer::PcConfig,
-    ) -> Result<WebrtcRsPc, RtcError> {
-        tracing::info!("Creating PeerConnection (webrtc-rs)");
+        config: crate::peer::RTCConfiguration,
+    ) -> Result<WebrtcRsPc, RTCError> {
+        tracing::info!("Creating RTCPeerConnection (webrtc-rs)");
         let mut cfg = webrtc::peer_connection::configuration::RTCConfiguration::default();
         for srv in &config.ice_servers {
             cfg.ice_servers.push(webrtc::ice_transport::ice_server::RTCIceServer {
@@ -373,7 +373,7 @@ impl WebrtcRsFactory {
             .api
             .new_peer_connection(cfg)
             .await
-            .map_err(|e| RtcError::PeerConnection(e.to_string()))?;
+            .map_err(|e| RTCError::RTCPeerConnection(e.to_string()))?;
         Ok(WebrtcRsPc::new(Arc::new(pc)))
     }
 }

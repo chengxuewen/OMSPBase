@@ -3,29 +3,29 @@
 //! # Multi-track architecture
 //! - TrackKind distinguishes Video/Audio tracks (D147)
 //! - TrackSender writes encoded frames to the RTP pipeline (delegates to backend)
-//! - TrackReceiver reads frames from remote PeerConnection
+//! - TrackReceiver reads frames from remote RTCPeerConnection
 //! - TrackRef is the unified handle enum for registry management (D148)
 
 use crate::backend::{ActiveTrack, TrackWriteBackend};
-use crate::RtcError;
+use crate::RTCError;
 
 /// Audio track configuration (D147).
 ///
 /// Opus defaults: 48kHz sample rate, 2 channels (stereo).
 /// Frame duration: 20ms (960 samples per channel at 48kHz).
 #[derive(Debug, Clone, Copy)]
-pub struct AudioTrackConfig {
+pub struct RTCAudioTrackConfig {
     pub sample_rate: u32,
     pub channels: u32,
 }
 
-impl Default for AudioTrackConfig {
+impl Default for RTCAudioTrackConfig {
     fn default() -> Self {
         Self { sample_rate: 48000, channels: 2 }
     }
 }
 
-impl AudioTrackConfig {
+impl RTCAudioTrackConfig {
     /// Samples per frame at 20ms (standard Opus frame duration).
     pub fn samples_per_frame(&self) -> u32 {
         self.sample_rate / 50 // 48000 / 50 = 960
@@ -54,7 +54,7 @@ impl TrackKind {
 }
 
 /// Receiver-side video/audio track.
-/// Receives frames from a remote PeerConnection via on_track callback.
+/// Receives frames from a remote RTCPeerConnection via on_track callback.
 #[derive(Debug, Clone)]
 pub struct TrackReceiver {
     pub id: String,
@@ -79,10 +79,10 @@ pub struct TrackSender {
     pub kind: TrackKind,
     /// Audio configuration (D147). Only meaningful when kind == Audio.
     /// None for video tracks.
-    pub audio_config: Option<AudioTrackConfig>,
-    pub(crate) backend: ActiveTrack,
+    pub audio_config: Option<RTCAudioTrackConfig>,
+    /// Direct access to the backend for write_raw_i420 etc.
+    pub backend: ActiveTrack,
 }
-
 impl TrackSender {
     pub fn new(id: String, kind: TrackKind) -> Self {
         Self {
@@ -95,7 +95,7 @@ impl TrackSender {
 
     /// Create an audio track with Opus configuration (D147).
     /// Defaults: 48kHz, 2 channels, 20ms frames.
-    pub fn new_audio(id: String, config: AudioTrackConfig) -> Self {
+    pub fn new_audio(id: String, config: RTCAudioTrackConfig) -> Self {
         Self {
             id,
             kind: TrackKind::Audio,
@@ -105,10 +105,10 @@ impl TrackSender {
     }
 
     /// Write an encoded frame to the track.
-    /// For audio tracks: uses frame_duration_ms from AudioTrackConfig.
+    /// For audio tracks: uses frame_duration_ms from RTCAudioTrackConfig.
     /// For video tracks: defaults to 33ms (30fps).
     /// Delegates to the active backend.
-    pub async fn write_frame(&self, data: &[u8]) -> Result<(), RtcError> {
+    pub async fn write_frame(&self, data: &[u8]) -> Result<(), RTCError> {
         self.backend.write_frame(data, self.kind, self.audio_config.as_ref()).await
     }
 
@@ -116,13 +116,13 @@ impl TrackSender {
     /// The backend handles encoding. Delegates to the active backend.
     ///
     /// `data` layout: Y plane (w*h) + U plane (w*h/4) + V plane (w*h/4).
-    pub async fn write_raw_i420(&self, data: &[u8], width: u32, height: u32) -> Result<(), RtcError> {
+    pub async fn write_raw_i420(&self, data: &[u8], width: u32, height: u32) -> Result<(), RTCError> {
         self.backend.write_raw_i420(data, width, height).await
     }
 }
 
 /// Unified handle for multi-track registry (D148).
-/// HashMap<String, TrackRef> in PeerConnection manages tracks.
+/// HashMap<String, TrackRef> in RTCPeerConnection manages tracks.
 #[derive(Debug, Clone)]
 pub enum TrackRef {
     Sender(TrackSender),
@@ -190,7 +190,7 @@ mod tests {
     }
     #[test]
     fn audio_track_config_defaults() {
-        let cfg = AudioTrackConfig::default();
+        let cfg = RTCAudioTrackConfig::default();
         assert_eq!(cfg.sample_rate, 48000);
         assert_eq!(cfg.channels, 2);
         assert_eq!(cfg.samples_per_frame(), 960);
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn new_audio_sets_kind_and_config() {
-        let ts = TrackSender::new_audio("mic-1".into(), AudioTrackConfig::default());
+        let ts = TrackSender::new_audio("mic-1".into(), RTCAudioTrackConfig::default());
         assert_eq!(ts.kind, TrackKind::Audio);
         assert!(ts.audio_config.is_some());
         assert_eq!(ts.audio_config.unwrap().sample_rate, 48000);

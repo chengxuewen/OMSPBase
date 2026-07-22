@@ -1,10 +1,10 @@
 # OMSPBase Status
 
-> 生成: 2026-07-21 | 决策: 166+ (D1-D165) | Phase: 0-1 | 56 tests (media) | WebRTC triple-backend | Multi-mode generator
+> 生成: 2026-07-22 | 决策: 170+ (D1-D169) | Phase: 0-1 | 54 tests (media) | RTC 重命名完成 (81 files) | webrtc-sys 0 errors | core→media 迁移 | backends→backend
 
 ## Phase
 
-**当前**: Phase 0-1 交错。P0+P1 完成。omspbase-media: 56 tests, multi-mode generator (Squares/SmpteBars) with timestamp overlay + bouncing box motion.
+**当前**: Phase 0-1 交错。RTC 前缀重命名完成 (34 类型, 81 文件)。webrtc-sys 后端编译 0 errors。core→media 迁移完成。命名规范已应用。
 **下一步**: P2 VideoTrackSource + P3 AudioTrackSource (从 webrtc-kit 移植)。Phase 1 Transport RTP → Phase 2 mediasoup。
 **Phase 2 方向**: mediasoup SFU + webrtc-sys 默认后端 + Component 框架精简版 + Admin Dashboard SPA。
 **MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(8+ modules, triple-backend)。
@@ -27,6 +27,13 @@
 | D163 | Bouncing box motion: fixed-direction velocity with edge bounce (webrtc-kit/opencv style) | ✅ | 0 |
 | D164 | Timestamp milliseconds: %.3f format for screenshot comparison | ✅ | 0 |
 | D165 | Generator background: Y=128 medium gray (match test source) | ✅ | 0 |
+| D166 | RTC 前缀命名规范: 对外类型全大写 RTC 前缀 (RTCPeerConnection...) | ✅ | 0 |
+| D167 | snake_case 方法命名: 删除 camelCase W3C 包装 | ✅ | 0 |
+| D168 | 统一 backend/ 目录命名 (singular) | ✅ | 0 |
+| D169 | core pipeline → media 迁移 (4 files, 54 tests) | ✅ | 0 |
+| D170 | RTC 重命名执行: 34 类型 + 81 文件 (crates 31, docs 14, refs 28, plans 8) | ✅ | 0 |
+| D171 | backends/ → backend/ 目录重命名 (omspbase-media) | ✅ | 0 |
+| D172 | webrtc-sys 预存错误修复: SharedPtr, UniquePtr, cxx 链路 (8→0 errors) | ✅ | 0 |
 
 | D125 | PipelineEngine hot-plug 边界测试: 6→11 tests | ✅ | 1 |
 

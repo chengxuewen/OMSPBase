@@ -1,4 +1,4 @@
-//! DataChannel control sender — signs commands with HMAC-SHA256, rate-limited send.
+//! RTCDataChannel control sender — signs commands with HMAC-SHA256, rate-limited send.
 //!
 //! Uses `omspbase_core::auth::SimplePskAuth` for signing.
 //! Commands are buffered (max 3), oldest dropped when full.
@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 // ponytail: 3-frame buffer prevents back-pressure stall in control loop
 
-/// Control commands sent over DataChannel from Remote to Host.
+/// Control commands sent over RTCDataChannel from Remote to Host.
 #[derive(Debug, Clone)]
 pub enum ControlCommand {
     /// Steering angle in degrees.
@@ -33,7 +33,7 @@ fn command_to_bytes(cmd: &ControlCommand) -> Vec<u8> {
     }
 }
 
-/// Control sender — signs and buffers commands for DataChannel transmission.
+/// Control sender — signs and buffers commands for RTCDataChannel transmission.
 pub struct ControlSender {
     /// PSK authenticator used for HMAC signing.
     auth: SimplePskAuth,

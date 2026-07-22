@@ -4,18 +4,18 @@
 //! to the decode pipeline through an mpsc channel.
 
 use omspbase_webrtc::{
-    AnswerOptions, DataChannelEvent, DataMessage, IceCandidate as RtcIceCandidate,
-    PcConfig, PeerConnection, PeerConnectionFactory, RtcError, SessionDescription,
+    RTCAnswerOptions, DataChannelEvent, RTCDataMessage, RTCIceCandidate as RtcIceCandidate,
+    RTCConfiguration, RTCPeerConnection, RTCPeerConnectionFactory, RTCError, RTCSessionDescription,
 };
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
-/// Manages a WebRTC PeerConnection for receiving frames via data channel.
+/// Manages a WebRTC RTCPeerConnection for receiving frames via data channel.
 ///
 /// Created before the signaling relay loop, reused for subsequent ICE candidates.
 pub struct WebrtcTransport {
-    factory: PeerConnectionFactory,
-    pc: Mutex<Option<PeerConnection>>,
+    factory: RTCPeerConnectionFactory,
+    pc: Mutex<Option<RTCPeerConnection>>,
     frame_tx: mpsc::UnboundedSender<Vec<u8>>,
     ice_tx: mpsc::UnboundedSender<String>,
     dc_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
@@ -29,14 +29,14 @@ pub fn ice_channel() -> (mpsc::UnboundedSender<String>, mpsc::UnboundedReceiver<
 impl WebrtcTransport {
     /// Create a new transport.
     ///
-    /// `frame_tx` — forwards received DataChannel messages to the decode pipeline.
+    /// `frame_tx` — forwards received RTCDataChannel messages to the decode pipeline.
     /// `ice_tx` — forwards ICE candidate JSON for sending via signaling WS.
     pub fn new(
         frame_tx: mpsc::UnboundedSender<Vec<u8>>,
         ice_tx: mpsc::UnboundedSender<String>,
     ) -> Self {
         Self {
-            factory: PeerConnectionFactory::new(),
+            factory: RTCPeerConnectionFactory::new(),
             pc: Mutex::new(None),
             frame_tx,
             ice_tx,
@@ -46,17 +46,17 @@ impl WebrtcTransport {
 
     /// Handle an incoming SDP offer from the signaling server.
     ///
-    /// Creates a PeerConnection, sets remote description, registers
+    /// Creates a RTCPeerConnection, sets remote description, registers
     /// data channel and ICE callbacks, generates an answer.
     ///
     /// Returns the answer SDP serialized as JSON.
-    pub async fn handle_offer(&self, sdp_json: &str) -> Result<String, RtcError> {
+    pub async fn handle_offer(&self, sdp_json: &str) -> Result<String, RTCError> {
         // a. Deserialize offer
-        let offer: SessionDescription = serde_json::from_str(sdp_json)
-            .map_err(|e| RtcError::Sdp(format!("parse offer SDP: {e}")))?;
+        let offer: RTCSessionDescription = serde_json::from_str(sdp_json)
+            .map_err(|e| RTCError::Sdp(format!("parse offer SDP: {e}")))?;
 
-        // b. Create PeerConnection
-        let config = PcConfig::default();
+        // b. Create RTCPeerConnection
+        let config = RTCConfiguration::default();
         let pc = self.factory.create_peer_connection(config).await?;
 
         // c. Set remote description
@@ -76,18 +76,18 @@ impl WebrtcTransport {
                         prev.abort();
                     }
                 }
-                let dc = omspbase_webrtc::DataChannel::from_webrtc(d).await;
+                let dc = omspbase_webrtc::RTCDataChannel::from_webrtc(d).await;
                 let mut rx = dc.spool().await;
                 let handle = tokio::spawn(async move {
                     loop {
                         match rx.recv().await {
                             Some(DataChannelEvent::Open) => {
-                                tracing::info!("Signaling: DataChannel opened (remote)");
+                                tracing::info!("Signaling: RTCDataChannel opened (remote)");
                             }
-                            Some(DataChannelEvent::Message(DataMessage { data })) => {
+                            Some(DataChannelEvent::Message(RTCDataMessage { data })) => {
                                 let size = data.len();
-                                tracing::debug!("Signaling: frame received via DataChannel ({} bytes)", size);
-                                tracing::info!("Signaling: frame received via DataChannel ({} bytes)", size);
+                                tracing::debug!("Signaling: frame received via RTCDataChannel ({} bytes)", size);
+                                tracing::info!("Signaling: frame received via RTCDataChannel ({} bytes)", size);
                                 let _ = frame_tx.send(data);
                             }
                             Some(DataChannelEvent::Closed) | None => break,
@@ -116,24 +116,24 @@ impl WebrtcTransport {
         }));
 
         // f. Create answer and set local description
-        let answer = pc.create_answer(&AnswerOptions::default()).await?;
+        let answer = pc.create_answer(&RTCAnswerOptions::default()).await?;
         pc.set_local_description(&answer).await?;
 
         // g. Serialize answer to JSON
         let answer_json = serde_json::to_string(&answer)
-            .map_err(|e| RtcError::Sdp(format!("serialize answer: {e}")))?;
+            .map_err(|e| RTCError::Sdp(format!("serialize answer: {e}")))?;
 
         // h. Close old PC before storing new one (avoid resource leak)
         // ponytail: MutexGuard is !Send → scope before .await to avoid Send bound violation
         let old_pc = {
-            let mut guard = self.pc.lock().map_err(|e| RtcError::Internal(e.to_string()))?;
+            let mut guard = self.pc.lock().map_err(|e| RTCError::Internal(e.to_string()))?;
             guard.take()
         };
         if let Some(old_pc) = old_pc {
             old_pc.close().await;
         }
         {
-            let mut guard = self.pc.lock().map_err(|e| RtcError::Internal(e.to_string()))?;
+            let mut guard = self.pc.lock().map_err(|e| RTCError::Internal(e.to_string()))?;
             *guard = Some(pc);
         }
 
@@ -144,14 +144,14 @@ impl WebrtcTransport {
     ///
     /// `candidate_json` is a JSON representation of RTCIceCandidateInit
     /// (with camelCase fields: candidate, sdpMid, sdpMLineIndex).
-    pub async fn handle_ice(&self, candidate_json: &str) -> Result<(), RtcError> {
+    pub async fn handle_ice(&self, candidate_json: &str) -> Result<(), RTCError> {
         let init: omspbase_webrtc::webrtc::ice_transport::ice_candidate::RTCIceCandidateInit =
             serde_json::from_str(candidate_json)
-                .map_err(|e| RtcError::Internal(format!("parse ICE candidate: {e}")))?;
+                .map_err(|e| RTCError::Internal(format!("parse ICE candidate: {e}")))?;
 
         // Clone PC outside the lock scope
         let pc = {
-            let guard = self.pc.lock().map_err(|e| RtcError::Internal(e.to_string()))?;
+            let guard = self.pc.lock().map_err(|e| RTCError::Internal(e.to_string()))?;
             guard.clone()
         };
 
@@ -171,7 +171,7 @@ impl Drop for WebrtcTransport {
     fn drop(&mut self) {
         // ponytail: best-effort close PC and abort DC reader on drop
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            // Close PeerConnection
+            // Close RTCPeerConnection
             if let Ok(mut guard) = self.pc.lock() {
                 if let Some(pc) = guard.take() {
                     handle.spawn(async move {

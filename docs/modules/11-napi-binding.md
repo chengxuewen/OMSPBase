@@ -167,7 +167,7 @@ session.on('error', (err: SessionError) => {});
 ### 控制
 
 ```typescript
-// 发送控制指令（DataChannel）
+// 发送控制指令（RTCDataChannel）
 session.control.send(Buffer.from(JSON.stringify({ steering: 15 })));
 
 // 主动拉取统计

@@ -54,11 +54,11 @@ pub enum SignalingMessage {
     LeaveRoom(LeaveRoomRequest),
     SdpOffer(SdpMessage),
     SdpAnswer(SdpMessage),
-    IceCandidate(IceCandidateMessage),
+    RTCIceCandidate(IceCandidateMessage),
     PublishTrack(PublishTrackRequest),
     SubscribeTrack(SubscribeTrackRequest),
     UnsubscribeTrack(UnsubscribeTrackRequest),
-    DataChannel(DataChannelSignal),
+    RTCDataChannel(DataChannelSignal),
     Ping,
     Error(ErrorInfo),
 }
@@ -253,7 +253,7 @@ message Empty {}
 **设计理由**：
 - 分离枚举保证类型安全 — 浏览器不会发送 `ParticipantJoined`，服务端不会发送 `JoinRoom`
 - 每个 message 独立定义，复用性强（`SdpMessage` 同时用于 offer 和 answer）
-- `DataChannelSignal` 独立于 SDP — DataChannel 是带内 SCTP 创建，信令只传达意图
+- `DataChannelSignal` 独立于 SDP — RTCDataChannel 是带内 SCTP 创建，信令只传达意图
 - `TrackRequest` 三合一 — publish/subscribe/unsubscribe 共享字段，通过枚举值区分语义
 
 **传输格式**：WebSocket binary 帧 = protobuf，WebSocket text 帧 = JSON（调试用，由同一个 protobuf schema 的 serde 派生）
@@ -352,7 +352,7 @@ Remote ←──WS── SignalHandler ←──SDP adapter── mediasoup Rout
 
 **SDP adapter** 将 WebRTC SDP 转换为 mediasoup 的 PlainTransport / WebRtcTransport 参数。信令层不创建 mediasoup Transport — 仅传递 JSON 参数给 Server 端的 mediasoup 集成模块。
 
-**WebSocket relay 保留 DC 控制命令**: mediasoup 处理音视频 RTP，但 DataChannel 控制命令（键盘/鼠标/手柄）仍通过 WebSocket 信令通道透传。这避免了 SFU 侧的 SCTP 开销，且控制命令负载小 (<1KB)，WS 延迟足够。
+**WebSocket relay 保留 DC 控制命令**: mediasoup 处理音视频 RTP，但 RTCDataChannel 控制命令（键盘/鼠标/手柄）仍通过 WebSocket 信令通道透传。这避免了 SFU 侧的 SCTP 开销，且控制命令负载小 (<1KB)，WS 延迟足够。
 
 ## 10.8 浏览器客户端适配
 
@@ -371,7 +371,7 @@ Remote ←──WS── SignalHandler ←──SDP adapter── mediasoup Rout
 | 场景 | 拓扑 | SignalHandler Phase 1 | RoomRouter Phase 2 |
 |------|------|----------------------|-------------------|
 | 远程桌面 | Server relay (D96 relay-default) | ✅ 配对中继 | — |
-| 遥控座舱 | Server relay + DataChannel (D118) | ✅ 配对中继 + dc_signal | — |
+| 遥控座舱 | Server relay + RTCDataChannel (D118) | ✅ 配对中继 + dc_signal | — |
 | 视频会议 | N:M SFU | — | ✅ SFU 广播 |
 | 直播推流 | 1:N PubSub | — | ✅ PubSub 按订阅 |
 | 监控拉流 | N:1 RTSP 桥接 | — | ✅ 单源多订阅 |
@@ -385,7 +385,7 @@ Remote ←──WS── SignalHandler ←──SDP adapter── mediasoup Rout
 | LiveKit | MessageSink/MessageSource 抽象 + 双格式 WS + JWT |
 | mediasoup | 信令无关 + WebRtcTransport/PlainTransport 类型区分 |
 | str0m | sans-I/O poll_output 不变式 |
-| webrtc-kit | PeerConnectionFactory trait + cfg 调度（适用于 SignalHandler 与 RoomRouter 的独立实现选择） |
+| webrtc-kit | RTCPeerConnectionFactory trait + cfg 调度（适用于 SignalHandler 与 RoomRouter 的独立实现选择） |
 
 ## 10.11 Phase 2+: MQTT 5.0 信令
 

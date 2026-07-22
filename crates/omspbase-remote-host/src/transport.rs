@@ -1,7 +1,7 @@
 //! WebRTC transport — stub with tracing instrumentation.
 //!
 //! Real WebRTC connections need a running signaling server (Phase I integration).
-//! The Transport struct holds a placeholder for the eventual PeerConnection.
+//! The Transport struct holds a placeholder for the eventual RTCPeerConnection.
 
 #[cfg(feature = "webrtc")]
 mod imp {

@@ -213,7 +213,7 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                 let should_relay = match serde_json::from_str::<SignalingMessage>(&text_str) {
                     Ok(sig_msg) => matches!(
                         sig_msg,
-                        SignalingMessage::Sdp { .. } | SignalingMessage::IceCandidate { .. }
+                        SignalingMessage::Sdp { .. } | SignalingMessage::RTCIceCandidate { .. }
                             | SignalingMessage::Frame { .. }
                     ),
                     Err(_) => {

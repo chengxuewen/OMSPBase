@@ -182,7 +182,7 @@ bitrate=4000           → bitrate: 4_000_000  # bps
 - **语言**：C (libobs 核心及大部分插件, 87.5%)，C++ (UI 和部分输出插件、浏览器源)，C# (Windows 特定组件)，Objective-C (macOS 集成)
 - **界面框架**：Qt 6 (Windows/Linux)，Cocoa (macOS 原生)
 - **图形引擎**：OpenGL (跨平台)，Direct3D 11 (Windows)
-- **关键依赖库**：FFmpeg (编解码 + 解复用 + 滤镜)，librtmp (自维护 fork — 支持 Enhanced RTMP)，libsrt (SRT 传输)，librist (RIST 传输)，libdatachannel (WebRTC DataChannel/WHIP)，x264 (软件 H.264)，SVT-AV1 (软件 AV1)，AOM (软件 AV1)，mbedTLS / OpenSSL / GnuTLS (TLS)，Jansson (JSON 解析)，CEF (Chromium Embedded Framework — 浏览器源)，libvpx (VP8/VP9)，VLC (libvlc — VLC 视频源)
+- **关键依赖库**：FFmpeg (编解码 + 解复用 + 滤镜)，librtmp (自维护 fork — 支持 Enhanced RTMP)，libsrt (SRT 传输)，librist (RIST 传输)，libdatachannel (WebRTC RTCDataChannel/WHIP)，x264 (软件 H.264)，SVT-AV1 (软件 AV1)，AOM (软件 AV1)，mbedTLS / OpenSSL / GnuTLS (TLS)，Jansson (JSON 解析)，CEF (Chromium Embedded Framework — 浏览器源)，libvpx (VP8/VP9)，VLC (libvlc — VLC 视频源)
 - **GPU 编码 API**：NVIDIA NVENC SDK，AMD AMF SDK，Intel Media SDK / oneVPL，Apple VideoToolbox，VA-API (libva)
 - **脚本引擎**：LuaJIT (内置，高性能 Lua JIT 编译器)，Python (通过 obs-scripting 插件)
 - **插件 ABI**：C API — `obs_source_t`, `obs_output_t`, `obs_encoder_t`, `obs_service_t`, `obs_filter_t`, `obs_transition_t`, `obs_frontend_api` 等结构体，通过函数指针表实现多态

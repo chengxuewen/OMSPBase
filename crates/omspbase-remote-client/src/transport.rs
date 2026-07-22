@@ -1,4 +1,4 @@
-//! WebRTC transport — PeerConnection factory for remote pull side.
+//! WebRTC transport — RTCPeerConnection factory for remote pull side.
 //!
 //! Feature-gated behind `cfg(feature = "webrtc")`. In default builds,
 //! a stub is provided that logs the server address.
@@ -7,7 +7,7 @@ use omspbase_core::error::CoreError;
 
 /// WebRTC transport placeholder.
 ///
-/// In production (with `webrtc` feature), manages a PeerConnection
+/// In production (with `webrtc` feature), manages a RTCPeerConnection
 /// that pulls remote tracks from the server relay.
 #[cfg(feature = "webrtc")]
 pub struct Transport {
@@ -47,7 +47,7 @@ impl Transport {
     }
 
     pub async fn connect(&self) -> Result<(), CoreError> {
-        // ponytail: stub — real PeerConnection connect deferred to full WebRTC integration
+        // ponytail: stub — real RTCPeerConnection connect deferred to full WebRTC integration
         tracing::info!("WebRTC transport connect stub");
         Ok(())
     }

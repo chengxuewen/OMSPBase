@@ -72,7 +72,7 @@ pub enum MediaType { Encoded, Raw, Both }
 | CameraCapture | Source | — | RawFrame | 编译时 |
 | AudioCapture | Source | — | RawFrame (audio) | 编译时 |
 | RtmpSubscriber | Source | — | EncodedFragment | 编译时 |
-| RtpReceiver | Source | — | EncodedFragment | 编译时 |
+| RTCRtpReceiver | Source | — | EncodedFragment | 编译时 |
 | InputReceiver | Sink | InputEvent | — | 运行时 |
 
 #### 处理类（Processor — 媒体变换）
@@ -96,7 +96,7 @@ pub enum MediaType { Encoded, Raw, Both }
 | ScreenRender | RawFrame | — | 编译时 |
 | AudioPlayback | RawFrame (audio) | — | 编译时 |
 | RtmpPublisher | EncodedFragment | — | 编译时 |
-| RtpSender | EncodedFragment | — | 编译时 |
+| RTCRtpSender | EncodedFragment | — | 编译时 |
 | Recorder | EncodedFragment | — | 运行时 |
 | InputForwarder | — | InputEvent | 编译时 |
 
@@ -109,7 +109,7 @@ pub enum MediaType { Encoded, Raw, Both }
 | SrtPlugin | SRT 传输 (GStreamer srtp) |
 | RtspPlugin | RTSP 接入 (GStreamer) |
 | WebRtcPlugin | WebRTC P2P/SFU (str0m / libwebrtc / webrtc-rs) |
-| DataChannelPlugin | WebRTC DataChannel |
+| DataChannelPlugin | WebRTC RTCDataChannel |
 
 #### 中继类
 

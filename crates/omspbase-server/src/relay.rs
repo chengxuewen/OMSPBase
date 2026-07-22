@@ -7,20 +7,20 @@ mod imp {
     use tokio::sync::Mutex;
 
     use omspbase_core::error::CoreError;
-    use omspbase_webrtc::{PeerConnection, PeerConnectionFactory, PcConfig};
+    use omspbase_webrtc::{RTCPeerConnection, RTCPeerConnectionFactory, RTCConfiguration};
 
     struct RelaySession {
-        host_peer: Option<PeerConnection>,
-        remote_peers: Vec<PeerConnection>,
+        host_peer: Option<RTCPeerConnection>,
+        remote_peers: Vec<RTCPeerConnection>,
     }
 
     pub struct Relay {
-        factory: PeerConnectionFactory,
+        factory: RTCPeerConnectionFactory,
         sessions: Arc<Mutex<HashMap<String, RelaySession>>>,
     }
     impl Relay {
         pub fn new() -> Self {
-            let factory = PeerConnectionFactory::new();
+            let factory = RTCPeerConnectionFactory::new();
             tracing::info!("WebRTC relay initialized (omspbase-webrtc / libwebrtc)");
             Relay {
                 factory,
@@ -31,8 +31,8 @@ mod imp {
         pub fn register_host(
             &self,
             room_id: &str,
-        ) -> Result<PeerConnection, CoreError> {
-            let config = PcConfig::default();
+        ) -> Result<RTCPeerConnection, CoreError> {
+            let config = RTCConfiguration::default();
             let pc = self
                 .factory
                 .create_peer_connection(config)
@@ -52,8 +52,8 @@ mod imp {
         pub fn register_remote(
             &self,
             room_id: &str,
-        ) -> Result<PeerConnection, CoreError> {
-            let config = PcConfig::default();
+        ) -> Result<RTCPeerConnection, CoreError> {
+            let config = RTCConfiguration::default();
             let pc = self
                 .factory
                 .create_peer_connection(config)
@@ -77,8 +77,8 @@ mod imp {
         /// Bridge tracks: bind Host video track to Remote PC.
         pub fn bridge_tracks(
             &self,
-            _host_pc: &PeerConnection,
-            _remote_pc: &PeerConnection,
+            _host_pc: &RTCPeerConnection,
+            _remote_pc: &RTCPeerConnection,
         ) -> Result<(), CoreError> {
             tracing::info!("WebRTC track bridging (ponytail: stub — needs live track wiring)");
             Ok(())
@@ -98,7 +98,7 @@ mod imp {
             Relay
         }
 
-        /// ponytail: stub bridge_tracks; requires webrtc feature for real PeerConnection access.
+        /// ponytail: stub bridge_tracks; requires webrtc feature for real RTCPeerConnection access.
         /// Roadmap: integrate VideoFrameGenerator as test video source (see .sisyphus/plans/gen-webrtc-integration/design.md)
         pub async fn bridge_tracks(
             &self,
