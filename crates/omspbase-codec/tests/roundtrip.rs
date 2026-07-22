@@ -1,3 +1,4 @@
+#![cfg(feature = "backend-ffmpeg")]
 //! Roundtrip tests — I420 → H.264 encode → I420 decode.
 
 use omspbase_codec::codec::{CodecId, PixelFormat, VideoFormat};
@@ -44,7 +45,27 @@ fn decode_all(decoder: &mut Box<dyn VideoDecoder>, packets: &[Vec<u8>]) -> Vec<V
     out
 }
 
-fn psnr(a: &[u8], b: &[u8]) -> f64 {
+fn psnr(a: &[u8], b: &[u8], a_stride: u32, b_stride: u32, w: u32, h: u32) -> f64 {
+    let a_stride = a_stride as usize;
+    let b_stride = b_stride as usize;
+    let w = w as usize;
+    let h = h as usize;
+    let mut mse = 0.0_f64;
+    let mut count = 0u64;
+    for row in 0..h {
+        let ao = row * a_stride;
+        let bo = row * b_stride;
+        for col in 0..w {
+            let av = a[ao + col] as f64;
+            let bv = b[bo + col] as f64;
+            mse += (av - bv).powi(2);
+            count += 1;
+        }
+    }
+    if mse < 0.0001 { 100.0 } else { 10.0 * (65025.0_f64 / (mse / count as f64)).log10() }
+}
+
+fn psnr_linear(a: &[u8], b: &[u8]) -> f64 {
     let n = a.len().min(b.len());
     let mse = a[..n].iter().zip(&b[..n]).map(|(x,y)| (*x as f64 - *y as f64).powi(2)).sum::<f64>() / n as f64;
     if mse < 0.0001 { 100.0 } else { 10.0 * (65025.0 / mse).log10() }
@@ -84,17 +105,13 @@ fn roundtrip_psnr_above_35db() {
 
     let dec_y = decoded[0].plane_data(0).unwrap();
     let df = &decoded[0];
+    let orig_stride = W;
+    let dec_stride = df.plane_stride(0).unwrap_or(df.width()); // fallback to width
 
-    // Compare center pixel to verify roundtrip fidelity
-    let center_idx = ((df.height()/2 * df.width()) + df.width()/2) as usize;
-    if center_idx < dec_y.len() && center_idx < orig_y.len() {
-        let orig_center = orig_y[center_idx];
-        let dec_center = dec_y[center_idx];
-        eprintln!("center pixel: orig={orig_center} dec={dec_center} diff={}", (orig_center as i16 - dec_center as i16).abs());
-        assert!((orig_center as i16 - dec_center as i16).abs() < 10, "center pixel differs too much");
-    }
-
-    let p = psnr(&orig_y, dec_y);
-    eprintln!("PSNR: {p:.1} dB");
-    assert!(p > 10.0, "PSNR {p:.1} below 10 dB");
+    let p = psnr(&orig_y, dec_y, orig_stride, dec_stride, W, H);
+    eprintln!("decoded Y plane: {} bytes, stride={dec_stride}, w={W} h={H}", dec_y.len());
+    eprintln!("first 10 orig: {:?}", &orig_y[..10.min(orig_y.len())]);
+    eprintln!("first 10 dec:  {:?}", &dec_y[..10.min(dec_y.len())]);
+    eprintln!("PSNR (strided): {p:.1} dB ({}x{})", df.width(), df.height());
+    assert!(p > 35.0, "PSNR {p:.1} below 35 dB");
 }

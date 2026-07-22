@@ -134,12 +134,17 @@ mod imp {
                     Ok(_) => {
                         let w = avframe.width();
                         let h = avframe.height();
+                        let y_stride = avframe.stride(0) as usize;
+                        let u_stride = avframe.stride(1) as usize;
+                        let v_stride = avframe.stride(2) as usize;
+                        let y_n = y_stride * h as usize;
+                        let uv_n = u_stride * (h / 2) as usize;
                         self.frames.push(VideoFrame {
                             format: crate::codec::VideoFormat { width: w, height: h, pixel_format: crate::codec::PixelFormat::Yuv420p },
                             planes: vec![
-                                crate::frame::Plane { data: avframe.data(0).to_vec(), stride: w },
-                                crate::frame::Plane { data: avframe.data(1).to_vec(), stride: w / 2 },
-                                crate::frame::Plane { data: avframe.data(2).to_vec(), stride: w / 2 },
+                                crate::frame::Plane { data: avframe.data(0)[..y_n].to_vec(), stride: y_stride as u32 },
+                                crate::frame::Plane { data: avframe.data(1)[..uv_n].to_vec(), stride: u_stride as u32 },
+                                crate::frame::Plane { data: avframe.data(2)[..uv_n].to_vec(), stride: v_stride as u32 },
                             ],
                             pts: 0, keyframe: false,
                         });

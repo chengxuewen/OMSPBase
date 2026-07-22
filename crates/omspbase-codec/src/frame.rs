@@ -22,4 +22,7 @@ impl VideoFrame {
     pub fn plane_data(&self, index: usize) -> Option<&[u8]> {
         self.planes.get(index).map(|p| p.data.as_slice())
     }
+    pub fn plane_stride(&self, index: usize) -> Option<u32> {
+        self.planes.get(index).map(|p| p.stride)
+    }
 }
