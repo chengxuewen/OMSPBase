@@ -224,13 +224,105 @@ impl PcBackend for WebrtcRsPc {
             };
             let receiver = TrackReceiver::new(track.id(), kind);
             if let Some(ref cb) = *cb_clone.lock().unwrap() {
-                cb(receiver);
+                cb(receiver.clone());
+            }
+            // P1: spawn decode pipeline for incoming video tracks
+            if matches!(kind, TrackKind::Video) {
+                let receiver2 = receiver;
+                let track2 = track.clone();
+                tokio::spawn(async move {
+                    run_decode_pipeline(track2, receiver2).await;
+                });
             }
             Box::pin(async {})
         }));
     }
 }
 
+// ── Video decode pipeline helpers for webrtc-rs on_track ──
+
+/// ponytail: H.264 FU-A reassembly + decode loop.
+/// Polls `track.read_rtp()` in a loop, reassembles fragmented NAL units,
+/// decodes H.264 → I420, and delivers frames to `receiver.sink`.
+async fn run_decode_pipeline(
+    track: Arc<webrtc::track::track_remote::TrackRemote>,
+    receiver: TrackReceiver,
+) {
+    use omspbase_codec::{CodecFactory, DecoderConfig, CodecId};
+
+    let factory = CodecFactory::new();
+    let decoder_config = DecoderConfig { codec: CodecId::H264 };
+    let mut decoder = match factory.create_decoder(decoder_config.clone(), None) {
+        Ok(mut d) => {
+            if d.configure(&decoder_config).is_err() {
+                return;
+            }
+            d
+        }
+        Err(_) => return,
+    };
+
+    let mut au_buffer: Vec<u8> = Vec::new();
+    loop {
+        let (pkt, _attrs) = match track.read_rtp().await {
+            Ok(v) => v,
+            Err(_) => break, // track closed or error
+        };
+        let payload = pkt.payload.to_vec();
+        if payload.len() < 2 {
+            continue;
+        }
+        let nal_type = payload[0] & 0x1F;
+        if nal_type == 28 {
+            // FU-A fragment
+            let is_start = (payload[1] & 0x80) != 0;
+            let is_end = (payload[1] & 0x40) != 0;
+            if is_start {
+                au_buffer.clear();
+                // Annex B start code + reconstructed NAL header
+                au_buffer.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+                let nal_ref = payload[0] & 0x60;
+                let fu_type = payload[1] & 0x1F;
+                au_buffer.push(nal_ref | fu_type);
+            }
+            au_buffer.extend_from_slice(&payload[2..]);
+            if is_end && !au_buffer.is_empty() {
+                feed_and_drain(&mut decoder, &receiver, &au_buffer);
+            }
+        } else {
+            // Single NAL unit — wrap in Annex B start code
+            let mut single = Vec::with_capacity(4 + payload.len());
+            single.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+            single.extend_from_slice(&payload);
+            feed_and_drain(&mut decoder, &receiver, &single);
+        }
+    }
+}
+
+/// Push access unit to decoder and drain decoded frames to FrameSink.
+fn feed_and_drain(decoder: &mut Box<dyn omspbase_codec::VideoDecoder>, receiver: &TrackReceiver, au: &[u8]) {
+    if decoder.push_packet(au).is_err() {
+        return;
+    }
+    while let Ok(Some(frame)) = decoder.pull_frame() {
+        let raw = flatten_i420_planes(&frame);
+        if let Ok(guard) = receiver.sink.lock() {
+            if let Some(ref sink) = *guard {
+                sink.on_frame(&raw, frame.format.width, frame.format.height);
+            }
+        }
+    }
+}
+
+/// ponytail: concatenate Y, U, V planes into a contiguous I420 buffer.
+fn flatten_i420_planes(frame: &VideoFrame) -> Vec<u8> {
+    let len: usize = frame.planes.iter().map(|p| p.data.len()).sum();
+    let mut out = Vec::with_capacity(len);
+    for plane in &frame.planes {
+        out.extend_from_slice(&plane.data);
+    }
+    out
+}
 // ── WebrtcRsDc ──
 
 #[derive(Clone)]
