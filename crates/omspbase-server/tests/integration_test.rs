@@ -246,3 +246,101 @@ async fn test_auth_failure_integration() {
     drop(ws);
 }
 
+
+
+// ── E2E video frame relay test ──
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn e2e_video_frame_relay() {
+    unsafe { std::env::set_var("OMSPBASE_PSK", PSK) };
+
+    let server = SignalingServer::new();
+    let app = signaling_router(server);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let ws_url = format!("ws://{}/ws", addr);
+
+    // --- Host: connect, auth, join room, wait for remote, send 5 video frames ---
+    let host_url = ws_url.clone();
+    let host_handle = tokio::spawn(async move {
+        let (mut ws, _) = tokio_tungstenite::connect_async(&host_url).await.unwrap();
+        ws.send(WsMsg::Text(PSK.into())).await.unwrap();
+        ws.next().await.unwrap().unwrap(); // auth ack
+        let join = serde_json::to_string(&SignalingMessage::RoomJoin {
+            room_id: ROOM.into(), peer_role: PeerRole::Host,
+        }).unwrap();
+        ws.send(WsMsg::Text(join.into())).await.unwrap();
+        ws.next().await.unwrap().unwrap(); // room_joined
+
+        // Wait for remote to signal SDP (we use a sleep since we can't coordinate channels here)
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Send 5 video frames with increasing sequence numbers
+        for seq in 0..5u64 {
+            let frame = SignalingMessage::Frame {
+                room_id: ROOM.into(),
+                codec: "h264".into(),
+                sequence: seq,
+                is_keyframe: seq == 0,
+                data_base64: base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    format!("frame-{seq}").as_bytes(),
+                ),
+            };
+            ws.send(WsMsg::Text(serde_json::to_string(&frame).unwrap().into())).await.unwrap();
+        }
+        // Keep connection alive briefly
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    });
+
+    // --- Remote: connect, auth, join room, listen for frames ---
+    let remote_url = ws_url.clone();
+    let remote_handle = tokio::spawn(async move {
+        let (mut ws, _) = tokio_tungstenite::connect_async(&remote_url).await.unwrap();
+        ws.send(WsMsg::Text(PSK.into())).await.unwrap();
+        ws.next().await.unwrap().unwrap(); // auth ack
+        let join = serde_json::to_string(&SignalingMessage::RoomJoin {
+            room_id: ROOM.into(), peer_role: PeerRole::Remote,
+        }).unwrap();
+        ws.send(WsMsg::Text(join.into())).await.unwrap();
+        ws.next().await.unwrap().unwrap(); // room_joined
+
+        // Drain: collect Frame messages until timeout
+        let mut received_frames: Vec<u64> = Vec::new();
+        loop {
+            let msg = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                ws.next(),
+            ).await;
+            match msg {
+                Ok(Some(Ok(ws_msg))) => {
+                    if let Ok(text) = ws_msg.to_text() {
+                        if let Ok(sig) = serde_json::from_str::<SignalingMessage>(text) {
+                            if let SignalingMessage::Frame { sequence, is_keyframe, codec, .. } = sig {
+                                received_frames.push(sequence);
+                                // First frame must be keyframe
+                                if sequence == 0 {
+                                    assert!(is_keyframe, "first frame must be keyframe");
+                                }
+                                assert_eq!(codec, "h264");
+                            }
+                        }
+                    }
+                }
+                _ => break, // timeout or error — stop
+            }
+        }
+        received_frames
+    });
+
+    // Collect results
+    host_handle.await.unwrap();
+    let received = remote_handle.await.unwrap();
+
+    // Assert: remote received all 5 frames in order
+    assert_eq!(received.len(), 5, "expected 5 frames, got: {:?}", received);
+    assert_eq!(received, vec![0, 1, 2, 3, 4], "frames must be in order");
+    println!("E2E frame relay: {}/5 frames received in order", received.len());
+}
