@@ -69,7 +69,7 @@ omspbase-client  # 启动桌面 GUI
 
 **Phase 1 运维策略**：
 - systemd service 配置 `Restart=always` + `RestartSec=5s`（D155）
-- 单进程部署：Host 功能内聚于 omspbase-remote-host（D155 决策）
+- 单进程部署：Host 功能内聚于 omspbase-host（D155 决策）
 
 ---
 

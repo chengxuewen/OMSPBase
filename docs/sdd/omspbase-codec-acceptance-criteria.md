@@ -265,10 +265,10 @@ With `backend-ffmpeg` feature enabled:
 ```
 1. cargo build --release --features backend-ffmpeg
 2. Verify with:
-   nm target/release/omspbase-remote-client | grep " U " | grep -E "avcodec_|avformat_|avutil_|sws_"
+   nm target/release/omspbase-client | grep " U " | grep -E "avcodec_|avformat_|avutil_|sws_"
    # Should be empty — all FFmpeg symbols resolved (no Undefined)
 3. Verify no dlopen:
-   strings target/release/omspbase-remote-client | grep -E "dlopen|dlclose|dlsym"
+   strings target/release/omspbase-client | grep -E "dlopen|dlclose|dlsym"
    # Should be empty
 4. Check with objdump -T | grep UND for dynamic FFmpeg symbols
 ```

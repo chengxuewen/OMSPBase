@@ -32,8 +32,8 @@ Check → Test → Build (Package)
 
 - `cargo build --workspace --release`
 - 3 crate 分别打包 tarball:
-  - `omspbase-remote-host-{version}-{target}.tar.gz`
-  - `omspbase-remote-client-{version}-{target}.tar.gz`
+  - `omspbase-host-{version}-{target}.tar.gz`
+  - `omspbase-client-{version}-{target}.tar.gz`
   - `omspbase-server-{version}-{target}.tar.gz`
 - Artifact 上传为 workflow run attachment
 

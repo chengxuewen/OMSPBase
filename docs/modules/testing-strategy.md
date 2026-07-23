@@ -50,8 +50,8 @@ Layer 4: E2E          → Host→Server→Remote 全链路
 
 | Crate | Unit | Component | 合计 |
 |-------|------|-----------|------|
-| omspbase-remote-host | 60% | 80% | 80% |
-| omspbase-remote-client | 50% | 75% | 75% |
+| omspbase-host | 60% | 80% | 80% |
+| omspbase-client | 50% | 75% | 75% |
 | omspbase-server | 60% | 80% | 80% |
 | omspbase-core (Phase 2) | 70% | 85% | 85% |
 

@@ -31,7 +31,7 @@
 
 ## 概述
 
-OMSPBase 是 AUDE 生态的多媒体基础设施，提供七大产品能力。核心 crate：omspbase-remote-host（采集+编码+推流）、omspbase-remote-client（拉流+解码+控制）、omspbase-server（信令+relay+监控）。Phase 1-2 采用 Host 单进程 (D155)，Phase 0-5 整体规划见架构文档。
+OMSPBase 是 AUDE 生态的多媒体基础设施，提供七大产品能力。核心 crate：omspbase-host（采集+编码+推流）、omspbase-client（拉流+解码+控制）、omspbase-server（信令+relay+监控）。Phase 1-2 采用 Host 单进程 (D155)，Phase 0-5 整体规划见架构文档。
 
 ```
 AUDESYS (工业控制) ──┐              ┌── AUDEBase (企业应用)

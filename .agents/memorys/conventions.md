@@ -45,8 +45,8 @@ D1 和 D126 是互补关系，不是替代关系。
 ## C4: crate 命名: host/client 对称
 
 **约束**：远程控制场景的 crate 命名遵循 host/client 对称模式：
-- **host** = 被控侧 → 推流端 → field/vehicle 侧 → `omspbase-remote-host`
-- **client** = 主控侧 → 拉流端 → cockpit/operator 侧 → `omspbase-remote-client`
+- **host** = 被控侧 → 推流端 → field/vehicle 侧 → `omspbase-host`
+- **client** = 主控侧 → 拉流端 → cockpit/operator 侧 → `omspbase-client`
 
 命名对应关系：
 | OMSPBase | Parsec | RustDesk | Moonlight/Sunshine |

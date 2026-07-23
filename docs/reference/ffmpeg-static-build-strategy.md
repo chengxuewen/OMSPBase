@@ -2,7 +2,7 @@
 
 > **决策引用**: D71 — GStreamer (Field/Host) + FFmpeg (Remote), 统一 VideoDecoder/VideoEncoder trait
 > **目标**: Remote 端零运行时依赖的 FFmpeg 静态链接解码方案
-> **适用 crate**: `omspbase-codec` (Phase 2+), `omspbase-remote-client` decode path
+> **适用 crate**: `omspbase-codec` (Phase 2+), `omspbase-client` decode path
 > **参考**: BtbN/FFmpeg-Builds (预构建), ffmpeg-sys-next (build.rs 模式), rivet-transcoder (GPU 直连 FFI)
 
 
@@ -287,7 +287,7 @@ and run: cargo build --target <your-target> -- FFMPEG_DIR=<path>
 
 ### 4.1 build.rs 设计
 
-`omspbase-codec/build.rs` (或 `omspbase-remote-client/build.rs`):
+`omspbase-codec/build.rs` (或 `omspbase-client/build.rs`):
 
 ```rust
 // build.rs — FFmpeg static linking detection

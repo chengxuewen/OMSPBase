@@ -35,7 +35,7 @@ systemd service 控制：
 
 ```
 1. systemctl stop omspbase-host
-2. 替换 /usr/local/bin/omspbase-remote-host
+2. 替换 /usr/local/bin/omspbase-host
 3. systemctl start omspbase-host
 ```
 
