@@ -4,6 +4,8 @@
 #[cfg(feature = "backend-webrtc-rs")]
 mod tests {
     use omspbase_webrtc::*;
+    use omspbase_webrtc::traits::PeerConnectionApi;
+    use omspbase_webrtc::data_channel::{RTCDataChannelInit, RTCDataChannelState, RTCDataChannel};
 
     #[tokio::test]
     async fn e2e_create_and_exchange_sdp() {

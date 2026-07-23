@@ -1,6 +1,8 @@
 //! RTCPeerConnection — W3C WebRTC API.
 use std::collections::HashMap;
 use std::sync::Arc;
+#[cfg(feature = "backend-webrtc-rs")]
+use std::{pin::Pin, future::Future};
 use crate::backend::{ActivePc, PcBackend};
 use crate::traits::PeerConnectionApi as _;
 use crate::data_channel::{RTCDataChannel, RTCDataChannelInit};

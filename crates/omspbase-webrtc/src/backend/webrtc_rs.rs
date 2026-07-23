@@ -385,6 +385,10 @@ impl TrackWriteBackend for WebrtcRsTrack {
     async fn write_raw_i420(
         &self, data: &[u8], width: u32, height: u32,
     ) -> Result<(), RTCError> {
+        // ponytail: auto-init encoder on first call
+        if self.encoder.lock().unwrap().is_none() {
+            self.init_encoder(width, height)?;
+        }
         let y_size = (width * height) as usize;
         let uv_size = ((width / 2) * (height / 2)) as usize;
         if data.len() < y_size + 2 * uv_size {
