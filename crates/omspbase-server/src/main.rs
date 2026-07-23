@@ -56,7 +56,7 @@ async fn main() {
         .merge(signaling_router)
         .merge(monitor_router);
 
-    // Bind address from omspbase_core config
+    // Bind address from omspbase_common config
     let bind_addr = format!("{}:{}", config.listen.host, config.listen.port);
 
     let listener = match tokio::net::TcpListener::bind(&bind_addr).await {

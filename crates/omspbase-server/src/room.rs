@@ -1,6 +1,6 @@
 use dashmap::DashMap;
-use omspbase_core::error::CoreError;
-use omspbase_core::protocol::PeerRole;
+use omspbase_common::error::CoreError;
+use omspbase_common::protocol::PeerRole;
 use std::sync::Arc;
 use std::time::Instant;
 

@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared core crate
-omspbase-core = { path = "../omspbase-core" }
+omspbase-common = { path = "../omspbase-common" }
 
 # WebRTC relay (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
 omspbase-webrtc = { path = "../omspbase-webrtc", optional = true }

@@ -3,10 +3,10 @@
 //! Exercises all crate boundaries: config parsing, metrics, protocol serialization,
 //! PSK auth, room management, and a live axum health endpoint.
 
-use omspbase_core::auth::{AuthResult, PskAuthenticator, SimplePskAuth};
-use omspbase_core::config::{HostConfig, RemoteConfig, ServerConfig};
-use omspbase_core::metrics::CoreMetrics;
-use omspbase_core::protocol::{PeerRole, SignalingMessage};
+use omspbase_common::auth::{AuthResult, PskAuthenticator, SimplePskAuth};
+use omspbase_common::config::{HostConfig, RemoteConfig, ServerConfig};
+use omspbase_common::metrics::CoreMetrics;
+use omspbase_common::protocol::{PeerRole, SignalingMessage};
 
 // ── Config parsing ───────────────────────────────────────────────────────────
 

@@ -8,12 +8,12 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use omspbase_core::error::CoreError;
+use crate::error::MediaError;
 use crate::pipeline::core::{
     InternalPacket, MediaProcessor, MediaSink, MediaSource,
 };
 
-type Result<T> = std::result::Result<T, CoreError>;
+type Result<T> = std::result::Result<T, MediaError>;
 
 /// Unique chain identifier (typically source node name).
 pub type ChainId = String;
@@ -79,7 +79,7 @@ impl PipelineEngine {
     ) -> Result<()> {
         let mut chains = self.chains.write().unwrap();
         if chains.contains_key(&id) {
-            return Err(CoreError::Unknown(format!("chain '{id}' already exists")));
+            return Err(MediaError::Internal(format!("chain '{id}' already exists")));
         }
 
         chains.insert(
@@ -104,7 +104,7 @@ impl PipelineEngine {
     pub fn remove_chain(&self, id: &str) -> Result<()> {
         let mut chains = self.chains.write().unwrap();
         let state = chains.remove(id).ok_or_else(|| {
-            CoreError::Unknown(format!("chain '{id}' not found"))
+            MediaError::Internal(format!("chain '{id}' not found"))
         })?;
 
         if let Some(handle) = state.task {
@@ -162,11 +162,11 @@ impl PipelineEngine {
     fn spawn_chain(&self, id: &str) -> Result<()> {
         let mut chains = self.chains.write().unwrap();
         let state = chains.get_mut(id).ok_or_else(|| {
-            CoreError::Unknown(format!("chain '{id}' not found"))
+            MediaError::Internal(format!("chain '{id}' not found"))
         })?;
 
         let source = state.source.take().ok_or_else(|| {
-            CoreError::Unknown(format!("chain '{id}': source already consumed"))
+            MediaError::Internal(format!("chain '{id}': source already consumed"))
         })?;
         let processors = state.processors.take().unwrap_or_default();
         let sinks = state.sinks.take().unwrap_or_default();

@@ -1,10 +1,10 @@
 //! RTCDataChannel control sender — signs commands with HMAC-SHA256, rate-limited send.
 //!
-//! Uses `omspbase_core::auth::SimplePskAuth` for signing.
+//! Uses `omspbase_common::auth::SimplePskAuth` for signing.
 //! Commands are buffered (max 3), oldest dropped when full.
 
-use omspbase_core::auth::SimplePskAuth;
-use omspbase_core::error::CoreError;
+use omspbase_common::auth::SimplePskAuth;
+use omspbase_common::error::CoreError;
 use std::collections::VecDeque;
 use tokio::sync::Mutex;
 

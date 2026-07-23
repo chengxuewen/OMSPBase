@@ -2,7 +2,7 @@
 //!
 //! Feature-gated behind `gstreamer`. In default builds, a no-op stub is provided.
 
-use omspbase_core::error::CoreError;
+use omspbase_common::error::CoreError;
 
 #[cfg(feature = "gstreamer")]
 use gstreamer::prelude::*;

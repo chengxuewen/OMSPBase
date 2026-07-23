@@ -1,11 +1,11 @@
-//! Prometheus metrics endpoint — delegates to omspbase_core::metrics::CoreMetrics.
+//! Prometheus metrics endpoint — delegates to omspbase_common::metrics::CoreMetrics.
 //!
 //! Exposes a `/metrics` endpoint returning Prometheus text format.
 
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
-use omspbase_core::metrics::CoreMetrics;
+use omspbase_common::metrics::CoreMetrics;
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::RwLock;

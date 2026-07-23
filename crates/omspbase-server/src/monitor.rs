@@ -3,7 +3,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::response::Json;
 use axum::routing::get;
-use omspbase_core::metrics::CoreMetrics;
+use omspbase_common::metrics::CoreMetrics;
 use serde::Serialize;
 use std::sync::Arc;
 use std::time::Instant;

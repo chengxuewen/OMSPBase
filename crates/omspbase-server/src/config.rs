@@ -1,5 +1,5 @@
-use omspbase_core::config::ServerConfig;
-use omspbase_core::error::CoreError;
+use omspbase_common::config::ServerConfig;
+use omspbase_common::error::CoreError;
 use std::path::Path;
 
 /// Load server configuration from a YAML file into the shared ServerConfig type.

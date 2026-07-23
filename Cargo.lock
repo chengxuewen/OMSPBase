@@ -3782,14 +3782,13 @@ dependencies = [
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
- "omspbase-core",
  "pkg-config",
  "thiserror 2.0.18",
  "tracing",
 ]
 
 [[package]]
-name = "omspbase-core"
+name = "omspbase-common"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -3812,7 +3811,6 @@ dependencies = [
  "eframe",
  "egui",
  "image",
- "omspbase-core",
  "rand 0.8.7",
  "thiserror 2.0.18",
  "tokio",
@@ -3831,7 +3829,7 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-video",
  "hmac",
- "omspbase-core",
+ "omspbase-common",
  "omspbase-media",
  "omspbase-webrtc",
  "serde",
@@ -3859,7 +3857,7 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-video",
  "hmac",
- "omspbase-core",
+ "omspbase-common",
  "omspbase-media",
  "omspbase-webrtc",
  "prometheus-client",
@@ -3884,7 +3882,7 @@ dependencies = [
  "dashmap",
  "futures-util",
  "http",
- "omspbase-core",
+ "omspbase-common",
  "omspbase-webrtc",
  "prometheus-client",
  "serde",

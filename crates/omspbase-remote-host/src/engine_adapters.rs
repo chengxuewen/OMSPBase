@@ -1,4 +1,4 @@
-//! Adapters that wrap host crate types as omspbase_core pipeline nodes,
+//! Adapters that wrap host crate types as omspbase_common pipeline nodes,
 //! so they can be orchestrated by PipelineEngine.
 //!
 //! - GstCaptureSource: wraps crate::pipeline::Pipeline as MediaSource<InternalPacket>
@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use omspbase_core::error::CoreError;
+use omspbase_common::error::CoreError;
 use omspbase_media::pipeline::core::{
     FormatSpec, InternalPacket, MediaSink, MediaSource, MediaType, NodeCapability,
     NodeInfo, PipelineNode,

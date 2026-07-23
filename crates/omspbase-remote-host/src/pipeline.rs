@@ -9,8 +9,8 @@
 mod imp {
     use gstreamer::prelude::*;
     use gstreamer_app;
-    use omspbase_core::config::CaptureConfig;
-    use omspbase_core::error::CoreError;
+    use omspbase_common::config::CaptureConfig;
+    use omspbase_common::error::CoreError;
 
     pub struct Pipeline {
         pipeline: gstreamer::Pipeline,
@@ -182,8 +182,8 @@ mod imp {
 }
 #[cfg(not(feature = "gstreamer"))]
 mod imp {
-    use omspbase_core::config::CaptureConfig;
-    use omspbase_core::error::CoreError;
+    use omspbase_common::config::CaptureConfig;
+    use omspbase_common::error::CoreError;
 
     pub struct Pipeline;
 
@@ -226,7 +226,7 @@ pub use imp::Pipeline;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use omspbase_core::config::CaptureConfig;
+    use omspbase_common::config::CaptureConfig;
 
     fn test_capture() -> CaptureConfig {
         CaptureConfig {

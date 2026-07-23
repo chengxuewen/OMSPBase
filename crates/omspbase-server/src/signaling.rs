@@ -5,9 +5,9 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
-use omspbase_core::auth::SimplePskAuth;
-use omspbase_core::error::CoreError;
-use omspbase_core::protocol::SignalingMessage;
+use omspbase_common::auth::SimplePskAuth;
+use omspbase_common::error::CoreError;
+use omspbase_common::protocol::SignalingMessage;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 

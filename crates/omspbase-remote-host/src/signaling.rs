@@ -10,8 +10,8 @@
 
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use omspbase_core::error::CoreError;
-use omspbase_core::protocol::{PeerRole, SignalingMessage};
+use omspbase_common::error::CoreError;
+use omspbase_common::protocol::{PeerRole, SignalingMessage};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};

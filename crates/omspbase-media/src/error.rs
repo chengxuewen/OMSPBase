@@ -17,6 +17,9 @@ pub enum MediaError {
 
     #[error("backend error: {0}")]
     BackendError(String),
+
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 /// Result type alias for media operations.

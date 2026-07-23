@@ -3,7 +3,7 @@
 //! Feature-gated behind `cfg(feature = "webrtc")`. In default builds,
 //! a stub is provided that logs the server address.
 
-use omspbase_core::error::CoreError;
+use omspbase_common::error::CoreError;
 
 /// WebRTC transport placeholder.
 ///

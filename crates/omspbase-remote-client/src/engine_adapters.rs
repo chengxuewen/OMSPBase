@@ -1,4 +1,4 @@
-//! Adapters that wrap remote crate types as omspbase_core pipeline nodes,
+//! Adapters that wrap remote crate types as omspbase_common pipeline nodes,
 //! so they can be orchestrated by PipelineEngine.
 //!
 //! - FrameSource: wraps tokio::sync::mpsc::UnboundedReceiver<Vec<u8>> as MediaSource
@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use omspbase_core::error::CoreError;
+use omspbase_common::error::CoreError;
 use omspbase_media::pipeline::core::{
     EncodedFragment, FormatSpec, FragmentFlags, FrameTiming, InternalPacket, MediaSink,
     MediaSource, MediaType, NodeCapability, NodeInfo, PipelineNode,

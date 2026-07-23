@@ -9,7 +9,7 @@ mod engine_adapters;
 
 // ponytail: no direct CoreError use in main — errors handled via config load / pipeline API
 use omspbase_media::engine::PipelineEngine;
-use omspbase_core::metrics::CoreMetrics;
+use omspbase_common::metrics::CoreMetrics;
 
 #[tokio::main]
 async fn main() {

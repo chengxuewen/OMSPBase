@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 use std::sync::Arc;
 use std::any::Any;
-use omspbase_core::error::CoreError;
+use crate::error::MediaError;
 use crate::pipeline::core::{NodeType, MediaType, CodecId, FormatQuery};
 use crate::pixel_format::PixelFormat;
-type Result<T> = std::result::Result<T, CoreError>;
+type Result<T> = std::result::Result<T, MediaError>;
 
 /// Plugin kind: compile-time (statically linked) or run-time (dlopen).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +76,7 @@ impl PluginManager {
         plugin: &dyn Plugin,
         _cap_idx: usize,
     ) -> Result<Box<dyn Any + Send>> {
-        Err(CoreError::Unknown(format!(
+        Err(MediaError::Internal(format!(
             "plugin '{}': create_node not yet implemented (Phase 2)",
             plugin.name()
         )))

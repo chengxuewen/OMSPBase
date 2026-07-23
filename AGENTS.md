@@ -25,7 +25,7 @@ OMSPBase/
 │   ├── omspbase-remote-host/   # Host 应用 (headless, 采集+编码+推流)
 │   ├── omspbase-remote-client/ # Remote 应用 (拉流+解码+控制)
 │   ├── omspbase-server/ # Server 应用 (信令+relay+监控)
-│   ├── omspbase-core/   # 共享基础: config, error, metrics, protocol, auth (41 tests)
+│   ├── omspbase-common/   # 共享基础: config, error, metrics, protocol, auth (41 tests)
 │   ├── omspbase-media/  # 媒体管线: pipeline, broadcast, engine, transform (54 tests)
 │   ├── omspbase-webrtc/ # WebRTC 抽象层 (stub/webrtc-rs/webrtc-sys, video pipeline parity)
 │   └── omspbase-codec/  # 编解码: stub + FFmpeg + GStreamer 三后端
@@ -65,7 +65,7 @@ _项目已进入代码实施阶段。以下为当前状态：_
 | omspbase-remote-host | 🟡 骨架完成 | Host 应用: 采集、编码、推流、信令、配置 |
 | omspbase-remote-client | 🟡 骨架完成 | Remote 应用: 拉流、解码、渲染、控制 |
 | omspbase-server | 🟡 骨架完成 | Server 应用: 信令 relay、监控、会话管理 |
-│ omspbase-core | ✅ 已实现 | 共享基础: config, error, metrics, protocol, auth (41 tests)
+│ omspbase-common | ✅ 已实现 | 共享基础: config, error, metrics, protocol, auth (41 tests)
 │ omspbase-media | ✅ 已实现 | 媒体管线: pipeline, broadcast, engine, transform (54 tests)
 │ omspbase-webrtc | ✅ triple-backend | WebRTC 抽象层 (stub/webrtc-rs/webrtc-sys), 118+ tests, webrtc-rs 视频管线完整对齐
 │ omspbase-codec | ✅ 三后端 | 编解码: stub + FFmpeg (static) + GStreamer (dynamic, pixi)

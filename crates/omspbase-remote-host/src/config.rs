@@ -1,10 +1,10 @@
-//! Host configuration loader — delegates to omspbase_core::config::HostConfig.
+//! Host configuration loader — delegates to omspbase_common::config::HostConfig.
 //!
 //! Reads host.conf YAML and deserializes into the shared config schema.
 //! Backward-compatible with existing callers via `config::load(&config_path)`.
 
-use omspbase_core::config::HostConfig;
-use omspbase_core::error::CoreError;
+use omspbase_common::config::HostConfig;
+use omspbase_common::error::CoreError;
 use std::fs;
 use std::path::Path;
 

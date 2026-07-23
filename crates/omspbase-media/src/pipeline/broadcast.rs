@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
-use omspbase_core::error::CoreError;
+use crate::error::MediaError;
 use crate::pipeline::core::{FormatSpec, MediaSource, MediaType, NodeCapability, NodeInfo, PipelineNode};
 
-type Result<T> = std::result::Result<T, CoreError>;
+type Result<T> = std::result::Result<T, MediaError>;
 
 // ── 1. FragmentBroadcaster ──
 

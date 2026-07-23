@@ -1,5 +1,5 @@
 [package]
-name = "omspbase-core"
+name = "omspbase-common"
 version = "0.1.0"
 edition = "2024"
 description = "OMSPBase shared abstractions: config schemas, error codes, metrics, protocol definitions"

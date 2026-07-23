@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use omspbase_core::error::CoreError;
+use crate::error::MediaError;
 
 // Type alias for all pipeline operations.
-type Result<T> = std::result::Result<T, CoreError>;
+type Result<T> = std::result::Result<T, MediaError>;
 
 // ── 1. Public API Types (SDK layer) ──
 

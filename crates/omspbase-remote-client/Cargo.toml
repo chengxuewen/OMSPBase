@@ -10,7 +10,7 @@ name = "omspbase-remote-client"
 path = "src/main.rs"
 
 [dependencies]
-omspbase-core = { path = "../omspbase-core" }
+omspbase-common = { path = "../omspbase-common" }
 omspbase-media = { path = "../omspbase-media" }
 # GStreamer (optional — requires system GStreamer)
 gstreamer = { version = "0.23", optional = true }

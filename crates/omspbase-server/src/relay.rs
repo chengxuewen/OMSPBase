@@ -1,4 +1,4 @@
-use omspbase_core::error::CoreError;
+use omspbase_common::error::CoreError;
 
 #[cfg(feature = "webrtc")]
 mod imp {
@@ -6,7 +6,7 @@ mod imp {
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
-    use omspbase_core::error::CoreError;
+    use omspbase_common::error::CoreError;
     use omspbase_webrtc::{RTCPeerConnection, RTCPeerConnectionFactory, RTCConfiguration};
 
     struct RelaySession {

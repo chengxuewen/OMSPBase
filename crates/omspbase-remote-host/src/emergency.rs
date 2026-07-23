@@ -3,7 +3,7 @@
 //! Receives "STOP\n" to trigger emergency shutdown. Used for out-of-band
 //! control when the normal signaling channel is unavailable.
 
-use omspbase_core::error::CoreError;
+use omspbase_common::error::CoreError;
 use tokio::net::UdpSocket;
 
 /// Listens for emergency stop commands on a UDP socket.

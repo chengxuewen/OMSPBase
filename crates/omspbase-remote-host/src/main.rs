@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use futures_util::StreamExt;
 use omspbase_media::engine::PipelineEngine;
-use omspbase_core::protocol::SignalingMessage;
+use omspbase_common::protocol::SignalingMessage;
 use signaling::SignalingClient;
 mod config;
 mod control;
@@ -100,7 +100,7 @@ async fn main() {
     let frames_dropped = control_handler.frames_dropped.clone();
 
     // Phase 5: Build axum router (metrics)
-    let core_metrics = omspbase_core::metrics::CoreMetrics::new();
+    let core_metrics = omspbase_common::metrics::CoreMetrics::new();
     let shared_metrics = std::sync::Arc::new(std::sync::RwLock::new(core_metrics));
     let metrics_router = metrics::metrics_router(shared_metrics.clone());
 

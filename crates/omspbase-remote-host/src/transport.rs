@@ -6,7 +6,7 @@
 #[cfg(feature = "webrtc")]
 mod imp {
     use base64::{Engine as _, engine::general_purpose};
-    use omspbase_core::error::CoreError;
+    use omspbase_common::error::CoreError;
 
     pub struct Transport {
         tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,
@@ -48,7 +48,7 @@ mod imp {
 #[cfg(not(feature = "webrtc"))]
 mod imp {
     use base64::{Engine as _, engine::general_purpose};
-    use omspbase_core::error::CoreError;
+    use omspbase_common::error::CoreError;
 
     pub struct Transport {
         tx: Option<tokio::sync::mpsc::UnboundedSender<String>>,

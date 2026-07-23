@@ -17,8 +17,8 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use futures_util::SinkExt;
-use omspbase_core::error::CoreError;
-use omspbase_core::protocol::SignalingMessage;
+use omspbase_common::error::CoreError;
+use omspbase_common::protocol::SignalingMessage;
 use tokio::sync::{mpsc, Mutex as TokioMutex};
 use tokio_tungstenite::tungstenite::Message;
 use webrtc::api::APIBuilder;

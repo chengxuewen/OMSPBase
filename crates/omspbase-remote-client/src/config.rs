@@ -1,10 +1,10 @@
 //! Remote configuration — loads from YAML into core RemoteConfig.
 //!
-//! The config module delegates to omspbase_core::config::RemoteConfig
+//! The config module delegates to omspbase_common::config::RemoteConfig
 //! for the shared schema. This module exposes a convenience loader.
 
-use omspbase_core::config::RemoteConfig;
-use omspbase_core::error::CoreError;
+use omspbase_common::config::RemoteConfig;
+use omspbase_common::error::CoreError;
 
 /// Load RemoteConfig from a YAML file path.
 ///

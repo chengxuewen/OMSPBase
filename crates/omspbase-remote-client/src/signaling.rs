@@ -4,8 +4,8 @@
 
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
-use omspbase_core::error::CoreError;
-use omspbase_core::protocol::{PeerRole, SignalingMessage};
+use omspbase_common::error::CoreError;
+use omspbase_common::protocol::{PeerRole, SignalingMessage};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 /// Manages the signaling WebSocket lifecycle: auth, room join, message relay.
