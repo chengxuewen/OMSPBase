@@ -28,6 +28,7 @@ use webrtc::data_channel::data_channel_state::RTCDataChannelState;
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::ice_transport::ice_server::RTCIceServer;
 
 use crate::control::{self, ControlHandler};
 use crate::signaling::WsSender;
@@ -68,7 +69,11 @@ impl WebrtcTransport {
 
         // Create API and RTCPeerConnection
         let api = APIBuilder::new().build();
-        let config = RTCConfiguration::default();
+        let mut config = RTCConfiguration::default();
+        config.ice_servers = vec![RTCIceServer {
+            urls: vec!["stun:stun.l.google.com:19302".to_string()],
+            ..Default::default()
+        }];
         let pc = Arc::new(
             api.new_peer_connection(config)
                 .await

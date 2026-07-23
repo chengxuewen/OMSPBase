@@ -5,7 +5,7 @@
 
 use omspbase_webrtc::{
     RTCAnswerOptions, RTCDataChannel, RTCDataChannelEvent, RTCDataMessage, RTCIceCandidate as RtcIceCandidate,
-    RTCConfiguration, RTCPeerConnection, RTCPeerConnectionFactory, RTCError, RTCSessionDescription,
+    RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCPeerConnectionFactory, RTCError, RTCSessionDescription,
 };
 use omspbase_webrtc::traits::PeerConnectionApi;
 use std::sync::{Arc, Mutex};
@@ -59,7 +59,12 @@ impl WebrtcTransport {
             .map_err(|e| RTCError::Sdp(format!("parse offer SDP: {e}")))?;
 
         // b. Create RTCPeerConnection
-        let config = RTCConfiguration::default();
+        let mut config = RTCConfiguration::default();
+        config.ice_servers = vec![RTCIceServer {
+            urls: vec!["stun:stun.l.google.com:19302".to_string()],
+            username: String::new(),
+            password: String::new(),
+        }];
         let pc = self.factory.create_peer_connection(config).await?;
 
         // c. Set remote description
