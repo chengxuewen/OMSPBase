@@ -154,4 +154,11 @@ impl StubFactory {
         tracing::info!("Creating RTCPeerConnection (stub)");
         Ok(StubPc::default())
     }
+
+    /// Create a stub video track — no-op.
+    pub(crate) fn create_video_track(
+        &self,
+    ) -> (StubTrack, ()) {
+        (StubTrack, ())
+    }
 }

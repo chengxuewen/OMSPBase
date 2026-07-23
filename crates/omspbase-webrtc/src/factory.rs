@@ -26,18 +26,10 @@ impl RTCPeerConnectionFactory {
         })
     }
 
-    /// Create a video track with a real VideoTrackSource (webrtc-sys only).
-    /// For other backends, returns a stub TrackSender.
+    /// Create a video track with a real video track backend.
     pub fn create_video_track(&self, track_id: &str) -> TrackSender {
-        #[cfg(feature = "backend-webrtc-sys")]
-        {
-            let (backend, _media_track) = self.backend.create_video_track();
-            TrackSender { id: track_id.to_string(), kind: TrackKind::Video, audio_config: None, backend }
-        }
-        #[cfg(not(feature = "backend-webrtc-sys"))]
-        {
-            TrackSender::new(track_id.to_string(), TrackKind::Video)
-        }
+        let (backend, _media_track) = self.backend.create_video_track();
+        TrackSender { id: track_id.to_string(), kind: TrackKind::Video, audio_config: None, backend }
     }
 }
 

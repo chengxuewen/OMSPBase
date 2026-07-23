@@ -15,7 +15,7 @@ use crate::peer_connection::{
     RTCIceConnectionState, RTCIceGatheringState, RTCPeerConnectionState, RTCSignalingState,
 };
 use crate::sdp::{RTCSdpType, RTCSessionDescription};
-use crate::track::{RTCAudioTrackConfig, TrackKind};
+use crate::track::{RTCAudioTrackConfig, TrackKind, TrackReceiver};
 use crate::RTCError;
 use omspbase_codec::{
     CodecFactory, EncoderConfig, EncoderPreset, Bitrate, CodecId, PixelFormat,
@@ -27,6 +27,7 @@ use omspbase_codec::{
 #[derive(Clone)]
 pub(crate) struct WebrtcRsPc {
     inner: Arc<webrtc::peer_connection::RTCPeerConnection>,
+    on_track_cb: Arc<Mutex<Option<Box<dyn Fn(crate::track::TrackReceiver) + Send + Sync + 'static>>>>,
 }
 
 impl std::fmt::Debug for WebrtcRsPc {
@@ -39,7 +40,7 @@ impl std::fmt::Debug for WebrtcRsPc {
 
 impl WebrtcRsPc {
     pub(crate) fn new(inner: Arc<webrtc::peer_connection::RTCPeerConnection>) -> Self {
-        Self { inner }
+        Self { inner, on_track_cb: Arc::new(Mutex::new(None)) }
     }
 
     /// Set on_data_channel callback. Caller should use PubDataChannel's
@@ -210,10 +211,23 @@ impl PcBackend for WebrtcRsPc {
         let _ = self.inner.close().await;
     }
 
-    /// Override: store on_track callback (webrtc-rs bridge deferred to Phase 2).
+    /// Bridge webrtc-rs on_track → crate TrackReceiver callback.
     fn set_on_track(&self, cb: Box<dyn Fn(crate::track::TrackReceiver) + Send + Sync + 'static>) {
-        // ponytail: store callback for future webrtc-rs on_track bridge
-        // webrtc-rs RTCPeerConnection::on_track provides TrackRemote directly
+        *self.on_track_cb.lock().unwrap() = Some(cb);
+        let cb_clone = Arc::clone(&self.on_track_cb);
+        self.inner.on_track(Box::new(move |track, _, _| {
+            let kind = match track.kind() {
+                webrtc::rtp_transceiver::rtp_codec::RTPCodecType::Audio => TrackKind::Audio,
+                webrtc::rtp_transceiver::rtp_codec::RTPCodecType::Video => TrackKind::Video,
+                // ponytail: default to Video for Unspecified codec type
+                _ => TrackKind::Video,
+            };
+            let receiver = TrackReceiver::new(track.id(), kind);
+            if let Some(ref cb) = *cb_clone.lock().unwrap() {
+                cb(receiver);
+            }
+            Box::pin(async {})
+        }));
     }
 }
 
@@ -469,5 +483,34 @@ impl WebrtcRsFactory {
             .await
             .map_err(|e| RTCError::RTCPeerConnection(e.to_string()))?;
         Ok(WebrtcRsPc::new(Arc::new(pc)))
+    }
+
+    /// Create a video track with H.264 RTP codec.
+    /// Returns (WebrtcRsTrack, Arc<dyn TrackLocal + Send + Sync>) —
+    /// the media track can be added to the RTCPeerConnection via add_track.
+    pub(crate) fn create_video_track(
+        &self,
+    ) -> (
+        WebrtcRsTrack,
+        std::sync::Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync>,
+    ) {
+        use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
+        use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
+
+        let track = std::sync::Arc::new(TrackLocalStaticSample::new(
+            RTCRtpCodecCapability {
+                mime_type: "video/h264".to_owned(),
+                clock_rate: 90000,
+                ..Default::default()
+            },
+            "video".to_owned(),
+            "video".to_owned(),
+        ));
+
+        let backend = WebrtcRsTrack::new(track.clone());
+        let media_track: std::sync::Arc<dyn webrtc::track::track_local::TrackLocal + Send + Sync> =
+            track;
+
+        (backend, media_track)
     }
 }
