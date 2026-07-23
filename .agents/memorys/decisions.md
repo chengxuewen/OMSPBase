@@ -2855,3 +2855,90 @@ webrtc_loopback_egui.rs 更新为 FrameSink + mpsc channel 模式。编译通过
 
 测试矩阵: stub 24 pass, ffmpeg 30 pass, 总计 54 tests。
 **关联**: D43, D71, D82, C5
+
+**关联**: D43, D71, D82, C5
+
+---
+
+## D175: GStreamer codec 后端
+
+**状态**: ✅
+**日期**: 2026-07-23
+
+**决策**: 实现 GStreamer 后端 (H.264 编解码)，通过 pixi 管理运行时依赖。
+- 编码管线: appsrc → videoconvert → x264enc → h264parse → appsink
+- 解码管线: appsrc → h264parse → avdec_h264 → videoconvert → appsink
+- EncoderPreset 映射到 x264enc speed-preset (ultrafast..placebo) via set_property_from_str
+- tune=zerolatency 设定
+- 27/27 tests pass (需要 pixi + DYLD_LIBRARY_PATH)
+- gstreamer-video 0.23 用于 VideoFrameRef I420 平面提取
+
+CI: pixi test-gstreamer task + GitHub Actions 独立 job (prefix-dev/setup-pixi)。
+
+**关联**: D43, D174
+
+---
+
+## D176: webrtc-rs write_raw_i420 接 omspbase-codec
+
+**状态**: ✅
+**日期**: 2026-07-23
+
+**决策**: webrtc-rs 后端通过 omspbase-codec 实现 write_raw_i420。
+- I420 平面数据 → VideoFrame → push_frame → pull_packet → H.264 EncodedPacket → write_frame (RTP)
+- 懒初始化: 首次 write_raw_i420 调用自动 init_encoder(width, height)
+- 默认 640x480 30fps VBR 2Mbps P1UltraFast
+- 每次 packet 释放/重获锁，避免跨 async 持锁
+
+**关联**: D166, D174
+
+---
+
+## D177: webrtc-rs P0/P1 视频管线对齐
+
+**状态**: ✅
+**日期**: 2026-07-23
+
+**决策**: 完成 webrtc-rs 后端视频管线，实现与 webrtc-sys 功能对等。
+- P0: set_on_track 连接 inner.on_track() → TrackReceiver → 用户回调
+- P0: create_video_track 创建 TrackLocalStaticSample (H.264, 90kHz) → 统一工厂分发
+- P1: VideoSink 桥接 (on_track → TrackRemote.read_rtp → H.264 FU-A 重组 → 解码 → FrameSink)
+- 移除 factory.rs 的 #[cfg] 门控 → 所有后端统一 dispatch
+
+webrtc-rs 视频管线完整:
+  发送端: create_video_track → write_raw_i420 → codec → write_frame → RTP
+  接收端: set_on_track → TrackRemote → RTP → 解码 → FrameSink
+
+**关联**: D166, D176
+
+---
+
+## D178: E2E P2P 编解码测试框架
+
+**状态**: ✅
+**日期**: 2026-07-23
+
+**决策**: 创建 p2p_codec_e2e.rs 测试完整编解码管线。
+- I420 → 编码 → WebRTC 发送 → 接收 → 解码 → I420 → 验证
+- SharedSink: Arc<InnerSink> 在 on_track 回调和断言之间共享状态
+- 验证 frame count + 尺寸匹配
+- ICE 相关测试门控到 webrtc-rs (需要 ICE 凭证，待后续修复)
+
+**关联**: D177
+
+---
+
+## D179: GStreamer 静态链接评估
+
+**状态**: ✅ (延迟)
+**日期**: 2026-07-23
+
+**决策**: 调研 GStreamer 静态链接可行性。结论: 不可行。
+- gstreamer-rs 无 gstreamer-full 支持，相关 MR 均为 Draft
+- Windows CRT 静态链接冲突
+- conda-forge 政策禁止静态库 (CFEP-18)
+- 硬件编解码插件 (nvcodec/vaapi/videotoolbox) 永远动态
+
+当前方案: pixi 管理开发依赖 (共享库)，分发时打包 .so/.dylib
+
+**关联**: D175

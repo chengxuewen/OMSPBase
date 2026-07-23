@@ -1,16 +1,21 @@
 # OMSPBase Status
 
-> 生成: 2026-07-22 | 决策: 170+ (D1-D173) | Phase: 0-1 | 137 workspace tests | omspbase-codec crate (54 tests, PSNR 100dB) | webrtc 83 tests | FFmpeg backend
+**生成**: 2026-07-23 | 决策: 175+ (D1-D179) | Phase: 0-1 收尾 | 43 commits on main
 
-**当前**: 7 crate workspace。omspbase-codec Phase 0-1 完成 (stub+FFmpeg双后端, 54 tests, PSNR 100.0 dB roundtrip)。RTC 重命名 + PeerConnectionApi trait + RealObserver/FrameSink 接收端。
+**当前**: 7 crate workspace。webrtc-rs 后端视频管线完整对齐 webrtc-sys（发送: write_raw_i420→codec→write_frame, 接收: set_on_track→RTP→decode→FrameSink）。omspbase-codec 三后端 (stub+FFmpeg+GStreamer)。E2E P2P 编解码测试就位。
 
-**当前**: Phase 0-1 交错。接收端完成: RealObserver (替换 NoOpObserver), FrameSink trait, VideoSink bridge (I420 提取)。RTC 前缀重命名完成。core→media 迁移完成。
-**下一步**: 接收端集成测试 + webrtc_loopback_egui 验证。
-**Phase 2 方向**: mediasoup SFU + webrtc-sys 默认后端 + Component 框架精简版 + Admin Dashboard SPA。
-**MVP 成果**: 5 crate workspace。remote-host(10 modules) + remote-client(9 modules) + server(8) + core(9) + webrtc(8+ modules, triple-backend)。
-**测试**: 147 workspace tests。omspbase-media: 54 tests。
-**架构文档**: 25 篇模块文档 + 7 篇 SDD。
+**测试**: 各后端独立通过。
+- webrtc (stub): 67+ tests 全部通过
+- webrtc (webrtc-sys): 49 tests, 4 ICE/SDP 预存失败
+- webrtc (webrtc-rs): 29 tests, 9 w3c_api SDP/ICE 预存失败
+- codec (stub): 32 tests
+- codec (FFmpeg): 35 tests
+- codec (GStreamer): 27 tests
+- media: 54 tests
+- core: 41 tests
+- server: 12 tests
 
+**Phase 2 方向**: Track A Host 填充 (采集+编码+推流) → Track C Remote → Integration。
 ## 决策状态
 
 | 决策 | 内容 | 状态 | Phase |
@@ -24,6 +29,12 @@
 | D170 | RTC 重命名执行 | ✅ | 0 |
 | D171 | backends/ → backend/ | ✅ | 0 |
 | D172 | webrtc-sys 预存错误修复 | ✅ | 0 |
-| D173 | RealObserver + FrameSink + VideoSink 接收端实现 | ✅ | 0 |
+|| D173 | RealObserver + FrameSink + VideoSink 接收端实现 | ✅ | 0 |
+| D174 | omspbase-codec 双后端完成 | ✅ | 0 |
+| D175 | GStreamer codec 后端 (pixi) | ✅ | 0 |
+| D176 | webrtc-rs write_raw_i420 接 codec | ✅ | 0 |
+| D177 | webrtc-rs P0/P1 视频管线对齐 | ✅ | 0 |
+| D178 | E2E P2P 编解码测试框架 | ✅ | 0 |
+| D179 | GStreamer 静态链接评估 (延迟) | ✅ | 0 |
 
-| D125, D1, D137-D155 | (省略, 见 decisions.md) | — | 0-2 |
+| D125, D1, D137-D155 | (省略) | — | 0-2 |
