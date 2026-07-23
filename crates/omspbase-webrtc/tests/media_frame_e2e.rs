@@ -15,12 +15,10 @@ impl FrameSink for CountingSink {
 async fn write_raw_i420_does_not_panic() {
     let factory = RTCPeerConnectionFactory::new();
     let pc = factory.create_peer_connection(RTCConfiguration::default()).await.unwrap();
-    let track_id = pc.add_track("video-1", TrackKind::Video).unwrap();
-    let tr = pc.get_track(&track_id).unwrap();
+    let sender = factory.create_video_track("video-1");
+    pc.add_track("video-1", TrackKind::Video).unwrap();
     let frame = common::loopback::generate_test_frame(320, 240, 0);
-    if let TrackRef::Sender(ref sender) = tr {
-        sender.write_raw_i420(&frame, 320, 240).await.unwrap();
-    }
+    sender.write_raw_i420(&frame, 320, 240).await.unwrap();
     pc.close().await;
 }
 
@@ -50,19 +48,17 @@ async fn frame_sink_and_p2p_exchange() {
     let factory = RTCPeerConnectionFactory::new();
     let pc1 = factory.create_peer_connection(RTCConfiguration::default()).await.unwrap();
     let pc2 = factory.create_peer_connection(RTCConfiguration::default()).await.unwrap();
-    let track_id = pc1.add_track("test-video", TrackKind::Video).unwrap();
-    let tr = pc1.get_track(&track_id).unwrap();
+    let sender = factory.create_video_track("test-video");
+    pc1.add_track("test-video", TrackKind::Video).unwrap();
     pc2.on_track(move |receiver| {
         if let TrackRef::Receiver(ref track_receiver) = receiver.track {
             track_receiver.set_frame_sink(Box::new(CountingSink::new()));
         }
     });
     common::loopback::exchange_sdp(&pc1, &pc2).await.unwrap();
-    if let TrackRef::Sender(ref sender) = tr {
-        for i in 0..5 {
-            let frame = common::loopback::generate_test_frame(320, 240, i);
-            sender.write_raw_i420(&frame, 320, 240).await.unwrap();
-        }
+    for i in 0..5 {
+        let frame = common::loopback::generate_test_frame(320, 240, i);
+        sender.write_raw_i420(&frame, 320, 240).await.unwrap();
     }
     pc1.close().await;
     pc2.close().await;
