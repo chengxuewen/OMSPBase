@@ -16,11 +16,12 @@ ffmpeg-the-third = { version = "5", optional = true }
 # GStreamer backend (dynamic link, Host default)
 gstreamer = { version = "0.23", optional = true }
 gstreamer-app = { version = "0.23", optional = true }
+gstreamer-video = { version = "0.23", optional = true }
 
 [features]
 default = []
 backend-ffmpeg = ["dep:ffmpeg-the-third"]
-backend-gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
+backend-gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
 
 [build-dependencies]
 pkg-config = "0.3"
