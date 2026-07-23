@@ -1,8 +1,8 @@
 # OMSPBase Status
 
-**生成**: 2026-07-23 | 决策: 175+ (D1-D179) | Phase: 0-1 收尾 | 43 commits on main
+**生成**: 2026-07-23 | 决策: 181+ (D1-D181) | Phase: 0-1 收尾 | 48 commits on main
 
-**当前**: 7 crate workspace。webrtc-rs 后端视频管线完整对齐 webrtc-sys（发送: write_raw_i420→codec→write_frame, 接收: set_on_track→RTP→decode→FrameSink）。omspbase-codec 三后端 (stub+FFmpeg+GStreamer)。E2E P2P 编解码测试就位。
+**当前**: 7 crate workspace。命名简化: omspbase-core→omspbase-common, omspbase-remote-host→omspbase-host, omspbase-remote-client→omspbase-client。依赖清理: codec/media 不再依赖 common。webrtc-rs 后端视频管线完整对齐 webrtc-sys。omspbase-codec 三后端 (stub+FFmpeg+GStreamer)。
 
 **测试**: 各后端独立通过。
 - webrtc (stub): 67+ tests 全部通过
@@ -12,7 +12,7 @@
 - codec (FFmpeg): 35 tests
 - codec (GStreamer): 27 tests
 - media: 54 tests
-- core: 41 tests
+- common: 41 tests
 - server: 12 tests
 
 **Phase 2 方向**: Track A Host 填充 (采集+编码+推流) → Track C Remote → Integration。
@@ -36,5 +36,7 @@
 | D177 | webrtc-rs P0/P1 视频管线对齐 | ✅ | 0 |
 | D178 | E2E P2P 编解码测试框架 | ✅ | 0 |
 | D179 | GStreamer 静态链接评估 (延迟) | ✅ | 0 |
+| D180 | omspbase-core → omspbase-common 重命名 + 依赖清理 | ✅ | 0 |
+| D181 | 移除 remote- 前缀 (host/client) | ✅ | 0 |
 
 | D125, D1, D137-D155 | (省略) | — | 0-2 |
