@@ -130,7 +130,7 @@ async fn main() {
         .psk
         .clone()
         .unwrap_or_else(|| "omspbase-dev".to_string());
-    let room_id = "default".to_string(); // ponytail: match remote for E2E
+    let room_id = config.room.id.clone();
 
     const MAX_RETRIES: u32 = 5;
     let mut last_err = None;

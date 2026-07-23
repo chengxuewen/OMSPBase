@@ -25,6 +25,10 @@ pub struct HostConfig {
 
     /// PSK for signaling auth.
     pub psk: Option<String>,
+
+    /// Room configuration.
+    #[serde(default)]
+    pub room: RoomConfig,
 }
 
 /// Config for omspbase-server (signaling + relay + monitoring).
@@ -62,6 +66,10 @@ pub struct RemoteConfig {
     /// PSK for signaling auth.
     pub psk: Option<String>,
 
+    /// Room configuration.
+    #[serde(default)]
+    pub room: RoomConfig,
+
     /// Render window configuration (platform-specific, optional).
     pub render: Option<RenderConfig>,
 }
@@ -76,6 +84,20 @@ pub struct ServerAddress {
     /// ICE server addresses (STUN/TURN URIs, optional).
     #[serde(default)]
     pub ice_servers: Vec<String>,
+}
+
+/// Room configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomConfig {
+    /// Room ID (default: "default").
+    #[serde(default = "default_room_id")]
+    pub id: String,
+}
+
+impl Default for RoomConfig {
+    fn default() -> Self {
+        Self { id: default_room_id() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +188,9 @@ fn default_room_capacity() -> usize {
 }
 fn default_rate_limit() -> u32 {
     100
+}
+fn default_room_id() -> String {
+    "default".to_string()
 }
 fn default_ice_timeout() -> u64 {
     30

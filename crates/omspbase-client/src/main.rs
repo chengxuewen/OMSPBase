@@ -88,7 +88,7 @@ async fn main() {
     let signaling = signaling::SignalingClient::new_with_frame_tx(
         &config.server.signaling_url,
         &psk,
-        "default",
+        &config.room.id,
         frame_tx,
     );
     tokio::spawn(async move {
