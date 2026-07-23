@@ -90,6 +90,43 @@ impl ControlSender {
     pub async fn depth(&self) -> usize {
         self.buffer.lock().await.len()
     }
+    /// Send a control command immediately via RTCDataChannel.
+    /// Signs with HMAC-SHA256 (key: omspbase-control), prefixes 0x01, sends binary.
+    pub async fn send_via_dc(&self, dc: &webrtc::data_channel::RTCDataChannel, cmd: &ControlCommand) -> Result<(), CoreError> {
+        let body = cmd.to_json_body();
+        let tag = self.hmac_sign(&body);
+        let mut payload = vec![0x01u8];
+        payload.extend_from_slice(&tag);
+        payload.extend_from_slice(body.as_bytes());
+        let bytes = bytes::Bytes::from(payload);
+        dc.send(&bytes).await
+            .map_err(|e| CoreError::Internal(format!("dc send: {e}")))?;
+        Ok(())
+    }
+    /// Compute 8-byte HMAC-SHA256 tag with key 'omspbase-control'.
+    fn hmac_sign(&self, body: &str) -> [u8; 8] {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"omspbase-control")
+            .expect("HMAC key derivation should not fail");
+        mac.update(body.as_bytes());
+        let result = mac.finalize().into_bytes();
+        let mut tag = [0u8; 8];
+        tag.copy_from_slice(&result[..8]);
+        tag
+    }
+}
+
+impl ControlCommand {
+    /// Serialize to JSON body matching host's ControlFrame format.
+    pub fn to_json_body(&self) -> String {
+        match self {
+            ControlCommand::Steering(v) => format!(r#"{{"type":"steering","value":{v}}}"#),
+            ControlCommand::Brake(v) => format!(r#"{{"type":"brake","value":{v}}}"#),
+            ControlCommand::Throttle(v) => format!(r#"{{"type":"throttle","value":{v}}}"#),
+            ControlCommand::EmergencyStop => r#"{{"type":"emergency_stop"}}"#.to_string(),
+        }
+    }
 }
 
 #[cfg(test)]

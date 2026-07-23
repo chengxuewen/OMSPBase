@@ -4,7 +4,7 @@
 //! to the decode pipeline through an mpsc channel.
 
 use omspbase_webrtc::{
-    RTCAnswerOptions, DataChannelEvent, RTCDataMessage, RTCIceCandidate as RtcIceCandidate,
+    RTCAnswerOptions, DataChannelEvent, RTCDataChannel, RTCDataMessage, RTCIceCandidate as RtcIceCandidate,
     RTCConfiguration, RTCPeerConnection, RTCPeerConnectionFactory, RTCError, RTCSessionDescription,
 };
 use std::sync::{Arc, Mutex};
@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 pub struct WebrtcTransport {
     factory: RTCPeerConnectionFactory,
     pc: Mutex<Option<RTCPeerConnection>>,
+    dc: Arc<Mutex<Option<RTCDataChannel>>>,
     frame_tx: mpsc::UnboundedSender<Vec<u8>>,
     ice_tx: mpsc::UnboundedSender<String>,
     dc_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
@@ -38,10 +39,10 @@ impl WebrtcTransport {
         Self {
             factory: RTCPeerConnectionFactory::new(),
             pc: Mutex::new(None),
+            dc: Arc::new(Mutex::new(None)),
             frame_tx,
             ice_tx,
             dc_task: Arc::new(Mutex::new(None)),
-        }
     }
 
     /// Handle an incoming SDP offer from the signaling server.
@@ -65,6 +66,7 @@ impl WebrtcTransport {
         // d. Register on_data_channel: spool → spawn task → forward frames
         let frame_tx = self.frame_tx.clone();
         let dc_task = self.dc_task.clone();
+        let dc_store = self.dc.clone();
         pc.on_data_channel(Box::new(move |d| {
             let frame_tx = frame_tx.clone();
             let dc_task = dc_task.clone();
@@ -77,6 +79,8 @@ impl WebrtcTransport {
                     }
                 }
                 let dc = omspbase_webrtc::RTCDataChannel::from_webrtc(d).await;
+                *dc_store.lock().unwrap() = Some(dc.clone());
+                let mut rx = dc.spool().await;
                 let mut rx = dc.spool().await;
                 let handle = tokio::spawn(async move {
                     loop {
@@ -164,6 +168,10 @@ impl WebrtcTransport {
             pc.add_ice_candidate(&candidate).await?;
         }
         Ok(())
+    }
+    /// Get the active RTCDataChannel for sending control commands.
+    pub fn data_channel(&self) -> Option<RTCDataChannel> {
+        self.dc.lock().ok()?.clone()
     }
 }
 

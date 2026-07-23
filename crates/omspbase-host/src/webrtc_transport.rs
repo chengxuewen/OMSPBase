@@ -13,7 +13,7 @@
 //! 4. The caller spawns a task to poll the event receiver.
 
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use futures_util::SinkExt;
@@ -29,8 +29,8 @@ use webrtc::data_channel::RTCDataChannel;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 
+use crate::control::{self, ControlHandler};
 use crate::signaling::WsSender;
-
 /// RTCDataChannel lifecycle events forwarded from callbacks.
 pub enum DcEvent {
     Open,
@@ -276,13 +276,20 @@ impl Drop for WebrtcTransport {
 /// Run the RTCDataChannel event loop — logs lifecycle events.
 ///
 /// Call this in a spawned task with the receiver from `WebrtcTransport::new()`.
-pub async fn run_dc_event_loop(mut rx: mpsc::UnboundedReceiver<DcEvent>) {
+pub async fn run_dc_event_loop(mut rx: mpsc::UnboundedReceiver<DcEvent>, control_handler: Arc<Mutex<ControlHandler>>) {
     loop {
         match rx.recv().await {
             Some(DcEvent::Open) => {
                 tracing::info!("RTCDataChannel opened");
             }
             Some(DcEvent::Message(data)) => {
+                if data.len() >= 9 && data[0] == 0x01 {
+                    let tag: [u8; 8] = data[1..9].try_into().unwrap();
+                    let body_str = String::from_utf8_lossy(&data[9..]).to_string();
+                    if let Some(frame) = control::parse_and_validate(&body_str, &tag) {
+                        control_handler.lock().unwrap().enqueue(frame);
+                    }
+                }
                 tracing::debug!("RTCDataChannel received {} bytes", data.len());
             }
             Some(DcEvent::Closed) | None => {

@@ -98,6 +98,7 @@ async fn main() {
     // Phase 4: Create control handler (shared with metrics)
     let control_handler = control::ControlHandler::new();
     let frames_dropped = control_handler.frames_dropped.clone();
+    let control_handler = Arc::new(Mutex::new(control_handler));
 
     // Phase 5: Build axum router (metrics)
     let core_metrics = omspbase_common::metrics::CoreMetrics::new();
@@ -209,7 +210,7 @@ async fn main() {
 
     // Spawn DC event loop — logs lifecycle events
     let dc_event_handle = tokio::spawn(async move {
-        webrtc_transport::run_dc_event_loop(dc_events).await;
+        webrtc_transport::run_dc_event_loop(dc_events, control_handler.clone()).await;
     });
     background_tasks.push(dc_event_handle);
 
