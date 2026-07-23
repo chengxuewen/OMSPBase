@@ -1,29 +1,29 @@
 [package]
-name = "omspbase-remote-host"
+name = "omspbase-client"
 version = "0.1.0"
 edition = "2024"
-description = "OMSPBase Remote Host — V4L2 capture, NVENC encode, WebRTC push (field/vehicle side)"
+description = "OMSPBase Remote Client — WebRTC receive, GStreamer decode, DataChannel control (cockpit/operator side)"
 license = "Apache-2.0"
 
 [[bin]]
-name = "omspbase-remote-host"
+name = "omspbase-client"
 path = "src/main.rs"
 
 [dependencies]
 omspbase-common = { path = "../omspbase-common" }
 omspbase-media = { path = "../omspbase-media" }
-# GStreamer (optional — requires system GStreamer on Linux/Jetson)
+# GStreamer (optional — requires system GStreamer)
 gstreamer = { version = "0.23", optional = true }
 gstreamer-app = { version = "0.23", optional = true }
 gstreamer-video = { version = "0.23", optional = true }
 
-# WebRTC (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
+# WebRTC (omspbase-webrtc thin wrapper around webrtc-rs)
 omspbase-webrtc = { path = "../omspbase-webrtc", features = ["backend-webrtc-rs"] }
-webrtc = "0.12"
 
-# HTTP + WebSocket
+# HTTP + WebSocket (config UI)
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", features = ["connect"] }
 tower-http = { version = "0.5", features = ["trace", "cors"] }
 
 # Config + serialization
@@ -34,33 +34,20 @@ serde_json = "1"
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-prometheus-client = "0.22"
-
 
 # Crypto (HMAC for DataChannel)
 hmac = "0.12"
 sha2 = "0.10"
 
 # Async utilities
-# WebSocket client for signaling
-tokio-tungstenite = { version = "0.24", features = ["connect"] }
 futures-util = "0.3"
 base64 = "0.22"
-async-trait = "0.1"
-bytes = "1"
-
-# Time handling
-chrono = { version = "0.4", features = ["serde"] }
 
 [features]
 default = []
 gstreamer = ["dep:gstreamer", "dep:gstreamer-app", "dep:gstreamer-video"]
-production = ["gstreamer"]
-# Backward-compatible cfg gate for transport.rs fallback path
 webrtc = []
-
-[dev-dependencies]
-tempfile = "3"
+production = ["gstreamer", "webrtc"]
 
 [profile.release]
 opt-level = 3

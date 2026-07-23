@@ -22,8 +22,8 @@ OMSPBase/
 │   ├── skills/         # 技能（book-to-skill/doc-audit/openspec-*/test-harness）
 │   └── memorys/        # 项目记忆文件 (decisions.md, status.md)
 ├── crates/              # Rust 工作区 (7 个 member crate)
-│   ├── omspbase-remote-host/   # Host 应用 (headless, 采集+编码+推流)
-│   ├── omspbase-remote-client/ # Remote 应用 (拉流+解码+控制)
+│   ├── omspbase-host/   # Host 应用 (headless, 采集+编码+推流)
+│   ├── omspbase-client/ # Remote 应用 (拉流+解码+控制)
 │   ├── omspbase-server/ # Server 应用 (信令+relay+监控)
 │   ├── omspbase-common/   # 共享基础: config, error, metrics, protocol, auth (41 tests)
 │   ├── omspbase-media/  # 媒体管线: pipeline, broadcast, engine, transform (54 tests)
@@ -54,7 +54,7 @@ OMSPBase/
 | 架构文档 | `docs/architecture.md` | 整体架构设计 |
 │ 模块文档 | `docs/modules/` | 各领域详细设计 (25 篇)
 | 项目记忆 | `.agents/memorys/` | 决策记录 (decisions.md)、状态跟踪 (status.md) |
-│ Rust 源码 | `crates/` | 七个 crate: omspbase-remote-host/remote-client/server/core/media/webrtc/codec
+│ Rust 源码 | `crates/` | 七个 crate: omspbase-host/remote-client/server/core/media/webrtc/codec
 
 ## CODE MAP
 
@@ -62,8 +62,8 @@ _项目已进入代码实施阶段。以下为当前状态：_
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| omspbase-remote-host | 🟡 骨架完成 | Host 应用: 采集、编码、推流、信令、配置 |
-| omspbase-remote-client | 🟡 骨架完成 | Remote 应用: 拉流、解码、渲染、控制 |
+| omspbase-host | 🟡 骨架完成 | Host 应用: 采集、编码、推流、信令、配置 |
+| omspbase-client | 🟡 骨架完成 | Remote 应用: 拉流、解码、渲染、控制 |
 | omspbase-server | 🟡 骨架完成 | Server 应用: 信令 relay、监控、会话管理 |
 │ omspbase-common | ✅ 已实现 | 共享基础: config, error, metrics, protocol, auth (41 tests)
 │ omspbase-media | ✅ 已实现 | 媒体管线: pipeline, broadcast, engine, transform (54 tests)

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/omspbase-remote-host", "crates/omspbase-remote-client", "crates/omspbase-server", "crates/omspbase-common", "crates/omspbase-webrtc", "crates/omspbase-media", "crates/omspbase-codec"]
+members = ["crates/omspbase-host", "crates/omspbase-client", "crates/omspbase-server", "crates/omspbase-common", "crates/omspbase-webrtc", "crates/omspbase-media", "crates/omspbase-codec"]
 resolver = "3"
 
 [workspace.package]

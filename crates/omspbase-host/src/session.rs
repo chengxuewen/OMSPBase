@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time;
 
-/// Session state serialized to `/tmp/omspbase-remote-host-session.json`.
+/// Session state serialized to `/tmp/omspbase-host-session.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     /// Unique session identifier (host ID from config).
@@ -22,7 +22,7 @@ impl Session {
     /// Returns a fresh session otherwise.
     pub fn load(state_path: Option<&str>) -> Self {
         let path = PathBuf::from(
-            state_path.unwrap_or("/tmp/omspbase-remote-host-session.json"),
+            state_path.unwrap_or("/tmp/omspbase-host-session.json"),
         );
 
         let _fallback = Self {
@@ -76,7 +76,7 @@ impl Session {
 
     /// Start background persistence — writes session JSON every 10 seconds.
     pub fn start_persist(&self) -> tokio::task::JoinHandle<()> {
-        let path = PathBuf::from("/tmp/omspbase-remote-host-session.json");
+        let path = PathBuf::from("/tmp/omspbase-host-session.json");
         let state = self.clone();
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs(10));
@@ -163,7 +163,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         handle.abort();
 
-        let path = std::path::PathBuf::from("/tmp/omspbase-remote-host-session.json");
+        let path = std::path::PathBuf::from("/tmp/omspbase-host-session.json");
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("host-persist-test"));
     }
