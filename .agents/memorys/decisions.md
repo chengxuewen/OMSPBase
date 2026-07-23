@@ -3004,3 +3004,20 @@ webrtc-rs 视频管线完整:
 - 27 文件重命名 + 13 文档文件更新
 
 最终 crate 命名: common · media · codec · webrtc · host · client · server
+**关联**: D183
+
+---
+
+## D184: P2P 管线生产就绪（#1-3）
+
+**状态**: ✅
+**日期**: 2026-07-24
+
+**决策**: 完善 P2P 管线 3 项关键改进。
+- #1: WebSocket 重连 — 指数退避 5 次 (1s→2s→4s→8s→16s)
+- #2: ICE 状态监控 — webrtc-rs + webrtc-sys 两个后端
+- #3: STUN 配置 — stun:stun.l.google.com:19302
+- #4 背压: 需要修改 engine_adapters.rs (Receiver→UnboundedReceiver 矛盾)
+- #5 房间: 需要新增 config struct 字段
+
+**关联**: D182
