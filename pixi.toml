@@ -40,6 +40,7 @@ audit = "cargo deny check"
 [feature.test.tasks]
 test = "cargo test --workspace"
 coverage = "cargo tarpaulin --workspace --out Html --out Lcov"
+test-gstreamer = "LD_LIBRARY_PATH=$PIXI_PROJECT_ROOT/.pixi/envs/dev/lib:$LD_LIBRARY_PATH DYLD_LIBRARY_PATH=$PIXI_PROJECT_ROOT/.pixi/envs/dev/lib:$DYLD_LIBRARY_PATH cargo test -p omspbase-codec --features backend-gstreamer"
 
 # CI tools (lightweight CI stages)
 [feature.ci.dependencies]
