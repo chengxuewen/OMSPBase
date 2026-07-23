@@ -2941,7 +2941,38 @@ webrtc-rs 视频管线完整:
 
 当前方案: pixi 管理开发依赖 (共享库)，分发时打包 .so/.dylib
 
-**关联**: D175
+**关联**: D181
+
+---
+
+## D182: E2E video frame relay test
+
+**状态**: ✅
+**日期**: 2026-07-23
+
+**决策**: 添加端到端视频帧中继测试。
+- 验证 Host → Server signaling relay → Remote 帧中继链路
+- 5 帧 H.264，按序到达，首帧 keyframe
+- 42/42 server tests pass (12 unit + 25 e2e + 5 integration)
+- base64 作为 dev-dependency 用于测试帧数据编码
+
+**关联**: D180, D181
+
+---
+
+## D183: webrtc stal 双端编译修复
+
+**状态**: ✅
+**日期**: 2026-07-23
+
+**决策**: 修复 webrtc crate stal 问题，使 host + client 双双编译通过。
+- 根因: omspbase-webrtc 默认 backend-webrtc-sys，client 代码依赖 webrtc:: 重导出
+- lib.rs 添加 `pub use data_channel::*;`（唯一未 re-export 的模块）
+- DataChannelEvent → RTCDataChannelEvent（RTC 前缀重命名遗漏）
+- MediaError 替代 CoreError（media 独立后）
+- 12 处修复跨 6 文件
+
+**关联**: D180
 **关联**: D175
 
 ---
