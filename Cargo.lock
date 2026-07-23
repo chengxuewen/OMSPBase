@@ -3908,6 +3908,7 @@ dependencies = [
  "cxx",
  "eframe",
  "egui",
+ "omspbase-codec",
  "omspbase-media",
  "serde",
  "serde_json",

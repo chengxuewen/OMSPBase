@@ -10,6 +10,7 @@ webrtc = { version = "0.12", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 cxx = { version = "1", optional = true }
 webrtc-sys = { version = "0.3", optional = true }
+omspbase-codec = { path = "../omspbase-codec", optional = true }
 tracing = "0.1"
 thiserror = "2"
 bytes = "1"
@@ -21,7 +22,7 @@ default = ["backend-webrtc-sys"]
 # Use real libwebrtc via webrtc-sys FFI (default)
 backend-webrtc-sys = ["dep:webrtc-sys", "dep:cxx"]
 # Use webrtc-rs pure Rust implementation (Phase 2+)
-backend-webrtc-rs = ["dep:webrtc"]
+backend-webrtc-rs = ["dep:webrtc", "dep:omspbase-codec"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

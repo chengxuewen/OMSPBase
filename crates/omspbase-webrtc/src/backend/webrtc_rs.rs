@@ -1,7 +1,7 @@
 //! webrtc-rs backend — wraps the `webrtc` crate types.
 //! Enabled via `backend-webrtc-rs` feature.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::DcBackend;
 use super::PcBackend;
@@ -17,6 +17,10 @@ use crate::peer_connection::{
 use crate::sdp::{RTCSdpType, RTCSessionDescription};
 use crate::track::{RTCAudioTrackConfig, TrackKind};
 use crate::RTCError;
+use omspbase_codec::{
+    CodecFactory, EncoderConfig, EncoderPreset, Bitrate, CodecId, PixelFormat,
+    VideoEncoder, VideoFrame, VideoFormat, Plane,
+};
 
 // ── WebrtcRsPc ──
 
@@ -295,9 +299,9 @@ impl DcBackend for WebrtcRsDc {
 
 // ── WebrtcRsTrack ──
 
-#[derive(Debug, Clone)]
 pub(crate) struct WebrtcRsTrack {
     inner: Option<Arc<webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample>>,
+    encoder: Mutex<Option<Box<dyn VideoEncoder>>>,
 }
 
 impl WebrtcRsTrack {
@@ -306,13 +310,51 @@ impl WebrtcRsTrack {
     ) -> Self {
         Self {
             inner: Some(track),
+            encoder: Mutex::new(None),
         }
+    }
+
+    /// Initialize the H.264 encoder. Called before first write_raw_i420.
+    pub(crate) fn init_encoder(&self, width: u32, height: u32) -> Result<(), RTCError> {
+        let config = EncoderConfig {
+            codec: CodecId::H264,
+            format: VideoFormat {
+                width,
+                height,
+                pixel_format: PixelFormat::Yuv420p,
+            },
+            bitrate: Bitrate::Vbr { target: 2_000_000, max: 4_000_000 },
+            fps: omspbase_codec::FrameRate { num: 30, den: 1 },
+            preset: EncoderPreset::P1UltraFast,
+            gop: 30,
+        };
+        let factory = CodecFactory::new();
+        let mut encoder = factory
+            .create_encoder(config.clone(), None)
+            .map_err(|e| RTCError::Track(format!("codec: {e}")))?;
+        encoder
+            .configure(&config)
+            .map_err(|e| RTCError::Track(format!("codec configure: {e}")))?;
+        *self.encoder.lock().unwrap() = Some(encoder);
+        Ok(())
     }
 }
 
 impl Default for WebrtcRsTrack {
     fn default() -> Self {
-        Self { inner: None }
+        Self { inner: None, encoder: Mutex::new(None) }
+    }
+}
+
+impl std::fmt::Debug for WebrtcRsTrack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebrtcRsTrack").field("has_track", &self.inner.is_some()).finish()
+    }
+}
+
+impl Clone for WebrtcRsTrack {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone(), encoder: Mutex::new(None) }
     }
 }
 
@@ -337,6 +379,48 @@ impl TrackWriteBackend for WebrtcRsTrack {
                 .write_sample(&sample)
                 .await
                 .map_err(|e| RTCError::Track(e.to_string()))?;
+        }
+        Ok(())
+    }
+    async fn write_raw_i420(
+        &self, data: &[u8], width: u32, height: u32,
+    ) -> Result<(), RTCError> {
+        let y_size = (width * height) as usize;
+        let uv_size = ((width / 2) * (height / 2)) as usize;
+        if data.len() < y_size + 2 * uv_size {
+            return Err(RTCError::Track("I420 data too short".into()));
+        }
+        let frame = VideoFrame {
+            format: VideoFormat { width, height, pixel_format: PixelFormat::Yuv420p },
+            planes: vec![
+                Plane { data: data[..y_size].to_vec(), stride: width },
+                Plane { data: data[y_size..y_size+uv_size].to_vec(), stride: width/2 },
+                Plane { data: data[y_size+uv_size..y_size+2*uv_size].to_vec(), stride: width/2 },
+            ],
+            pts: 0,
+            keyframe: false,
+        };
+        // Push frame under lock, release before writing
+        {
+            let mut guard = self.encoder.lock().unwrap();
+            let enc = guard.as_mut()
+                .ok_or_else(|| RTCError::Track("encoder not initialized".into()))?;
+            enc.push_frame(&frame)
+                .map_err(|e| RTCError::Track(format!("codec push: {e}")))?;
+        }
+        // Drain packets — acquire/release lock per iteration
+        loop {
+            let packet = {
+                let mut guard = self.encoder.lock().unwrap();
+                let enc = guard.as_mut()
+                    .ok_or_else(|| RTCError::Track("encoder not initialized".into()))?;
+                enc.pull_packet()
+                    .map_err(|e| RTCError::Track(format!("codec pull: {e}")))?
+            };
+            match packet {
+                Some(p) => self.write_frame(&p.data, TrackKind::Video, None).await?,
+                None => break,
+            }
         }
         Ok(())
     }
