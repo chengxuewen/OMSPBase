@@ -206,8 +206,18 @@ impl VideoEncoder for GstEncoder {
             .build()
             .map_err(|e| CodecError::Encoder(format!("h264parse: {e}")))?;
 
-        // ponytail: GStreamer 1.28 x264enc speed-preset/tune are GEnum,
-        // not settable from Rust. Rely on defaults (medium/zerolatency).
+        // Map EncoderPreset to x264enc speed-preset (GEnum, set via set_property_from_str)
+        let preset_str = match config.preset {
+            EncoderPreset::P1UltraFast => "ultrafast",
+            EncoderPreset::P2SuperFast => "superfast",
+            EncoderPreset::P3VeryFast => "veryfast",
+            EncoderPreset::P4Medium => "medium",
+            EncoderPreset::P5Slow => "slow",
+            EncoderPreset::P6VerySlow => "veryslow",
+            EncoderPreset::P7Lossless => "placebo",
+        };
+        x264enc.set_property_from_str("speed-preset", preset_str);
+        x264enc.set_property_from_str("tune", "zerolatency");
         let br_kbps = match config.bitrate {
             Bitrate::Cbr(b) => b,
             Bitrate::Vbr { target, .. } => target,

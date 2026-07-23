@@ -30,7 +30,7 @@ fn pull_before_push_returns_none() {
 }
 
 #[test]
-#[cfg(not(feature = "backend-ffmpeg"))]
+#[cfg(not(any(feature = "backend-ffmpeg", feature = "backend-gstreamer")))]
 fn push_pull_cycle_is_noop_for_stub() {
     let factory = CodecFactory::new();
     let mut decoder = factory.create_decoder(DecoderConfig { codec: CodecId::H264 }, None).unwrap();

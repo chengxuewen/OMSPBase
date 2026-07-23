@@ -41,7 +41,7 @@ fn configure_before_push_succeeds() {
 }
 
 #[test]
-#[cfg(not(feature = "backend-ffmpeg"))]
+#[cfg(not(any(feature = "backend-ffmpeg", feature = "backend-gstreamer")))]
 fn push_30_frames_then_pull_returns_none_for_stub() {
     let factory = CodecFactory::new();
     let mut encoder = factory.create_encoder(make_config(320, 240), None).unwrap();
@@ -111,7 +111,7 @@ fn configure_twice_overwrites() {
 }
 
 #[test]
-#[cfg(not(feature = "backend-ffmpeg"))]
+#[cfg(not(any(feature = "backend-ffmpeg", feature = "backend-gstreamer")))]
 fn push_after_close_continues_working_for_stub() {
     // Stub backend is stateless — close is a no-op
     let factory = CodecFactory::new();

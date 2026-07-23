@@ -39,7 +39,7 @@ fn stub_encode_configure_succeeds() {
     assert!(encoder.configure(&make_test_config()).is_ok());
 }
 
-#[cfg(not(feature = "backend-ffmpeg"))]
+#[cfg(not(any(feature = "backend-ffmpeg", feature = "backend-gstreamer")))]
 #[test]
 fn stub_encode_push_pull_cycle_returns_none() {
     let factory = CodecFactory::new();
@@ -75,7 +75,7 @@ fn stub_decode_configure_succeeds() {
     assert!(decoder.configure(&DecoderConfig { codec: CodecId::H264 }).is_ok());
 }
 
-#[cfg(not(feature = "backend-ffmpeg"))]
+#[cfg(not(any(feature = "backend-ffmpeg", feature = "backend-gstreamer")))]
 #[test]
 fn stub_decode_push_pull_returns_none() {
     let factory = CodecFactory::new();
