@@ -147,8 +147,8 @@ mod imp {
             Ok(())
         }
 
-        /// Pull a sample from the appsink and return raw H.264 bytes.
-        pub fn pull_sample(&self) -> Result<Vec<u8>, CoreError> {
+        /// Pull a sample from the appsink and return (raw H.264 bytes, PTS in nanoseconds).
+        pub fn pull_sample(&self) -> Result<(Vec<u8>, u64), CoreError> {
             let sample = self
                 .appsink
                 .try_pull_sample(gstreamer::ClockTime::from_mseconds(100))
@@ -156,10 +156,11 @@ mod imp {
             let buffer = sample
                 .buffer()
                 .ok_or_else(|| CoreError::EncoderInit("sample has no buffer".into()))?;
+            let pts_ns = buffer.pts().map(|t| t.nseconds()).unwrap_or(0);
             let map = buffer
                 .map_readable()
                 .map_err(|_| CoreError::EncoderInit("failed to map buffer".into()))?;
-            Ok(map.to_vec())
+            Ok((map.to_vec(), pts_ns))
         }
 
         /// Create a dummy pipeline for headless/E2E fallback.
@@ -214,10 +215,10 @@ mod imp {
             Ok(())
         }
 
-        /// Stub: returns empty vec when GStreamer is not available.
-        pub fn pull_sample(&self) -> Result<Vec<u8>, CoreError> {
+        /// Stub: returns empty tuple when GStreamer is not available.
+        pub fn pull_sample(&self) -> Result<(Vec<u8>, u64), CoreError> {
             tracing::debug!("pull_sample (stub): no GStreamer");
-            Ok(Vec::new())
+            Ok((Vec::new(), 0))
         }
     }
 }

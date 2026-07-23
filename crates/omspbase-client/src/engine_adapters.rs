@@ -14,17 +14,58 @@ use omspbase_media::pipeline::core::{
 
 type Result<T> = std::result::Result<T, CoreError>;
 
+// ── NAL unit helpers ──
+
+/// Scan Annex B byte-stream for a NAL unit header at `offset`.
+fn scan_nal_header(data: &[u8], offset: usize) -> Option<(u8, usize)> {
+    if offset + 4 > data.len() {
+        return None;
+    }
+    let header_len = if data[offset..].starts_with(&[0x00, 0x00, 0x00, 0x01]) {
+        4
+    } else if data[offset..].starts_with(&[0x00, 0x00, 0x01]) {
+        3
+    } else {
+        return None;
+    };
+    let nal_pos = offset + header_len;
+    if nal_pos >= data.len() {
+        return None;
+    }
+    let nal_type = data[nal_pos] & 0x1F;
+    let nal_end = (nal_pos + 1..data.len().saturating_sub(3))
+        .find(|&i| {
+            data[i..].starts_with(&[0x00, 0x00, 0x01])
+                || data[i..].starts_with(&[0x00, 0x00, 0x00, 0x01])
+        })
+        .unwrap_or(data.len());
+    Some((nal_type, nal_end))
+}
+
+/// Check if byte-stream contains an IDR keyframe (NAL type 5).
+fn is_keyframe(data: &[u8]) -> bool {
+    let mut offset = 0;
+    while let Some((nal_type, next)) = scan_nal_header(data, offset) {
+        if nal_type == 5 {
+            return true;
+        }
+        offset = next;
+    }
+    false
+}
+
 // ── FrameSource ──
 
 /// Wraps an unbounded MPSC receiver for frames arriving from WebRTC transport.
 /// Yields encoded H.264 byte-stream fragments to the pipeline.
 pub struct FrameSource {
     rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    frame_num: u64,
 }
 
 impl FrameSource {
     pub fn new(rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>) -> Self {
-        Self { rx }
+        Self { rx, frame_num: 0 }
     }
 }
 
@@ -64,30 +105,33 @@ impl MediaSource for FrameSource {
 
     fn poll_fragment(&mut self) -> Result<Option<Self::Output>> {
         match self.rx.try_recv() {
-            Ok(data) => Ok(Some(InternalPacket::Encoded(EncodedFragment {
-                track_id: "webrtc".into(),
-                timing: FrameTiming {
-                    dts: 0,
-                    pts: 0,
-                    duration: 0,
-                    wall_clock: Some(std::time::Instant::now()),
-                },
-                flags: FragmentFlags {
-                    keyframe: false,
-                    independent: true,
-                    discardable: false,
-                },
-                codec: "h264".into(),
-                init_data: None,
-                payload: data,
-            }))),
+            Ok(data) => {
+                self.frame_num += 1;
+                let is_kf = is_keyframe(&data);
+                let pts = self.frame_num;
+                Ok(Some(InternalPacket::Encoded(EncodedFragment {
+                    track_id: "webrtc".into(),
+                    timing: FrameTiming {
+                        dts: pts,
+                        pts,
+                        duration: 0,
+                        wall_clock: Some(std::time::Instant::now()),
+                    },
+                    flags: FragmentFlags {
+                        keyframe: is_kf,
+                        independent: true,
+                        discardable: false,
+                    },
+                    codec: "h264".into(),
+                    init_data: None,
+                    payload: data,
+                })))
+            }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => Ok(None),
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
                 tracing::info!("FrameSource: channel disconnected");
                 Ok(None)
             }
-        }
-    }
 }
 
 // ── DecodeSink ──

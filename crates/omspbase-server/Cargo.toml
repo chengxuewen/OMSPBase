@@ -49,6 +49,7 @@ production = ["webrtc"]
 tempfile = "3"
 tower = "0.5"
 http = "1"
+tokio-tungstenite = "0.24"
 
 [profile.release]
 opt-level = 3

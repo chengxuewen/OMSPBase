@@ -18,6 +18,77 @@ use omspbase_media::pipeline::core::{EncodedFragment, FragmentFlags, FrameTiming
 
 type Result<T> = std::result::Result<T, CoreError>;
 
+// ── NAL unit helpers for Annex B byte-stream ──
+
+/// Scan an Annex B byte-stream for a NAL unit header starting at `offset`.
+/// Returns (nal_unit_type, end_of_nal_offset) if header found.
+fn scan_nal_header(data: &[u8], offset: usize) -> Option<(u8, usize)> {
+    if offset + 4 > data.len() {
+        return None;
+    }
+    let header_len = if data[offset..].starts_with(&[0x00, 0x00, 0x00, 0x01]) {
+        4
+    } else if data[offset..].starts_with(&[0x00, 0x00, 0x01]) {
+        3
+    } else {
+        return None;
+    };
+    let nal_pos = offset + header_len;
+    if nal_pos >= data.len() {
+        return None;
+    }
+    let nal_type = data[nal_pos] & 0x1F;
+    // find end: next start code or EOF
+    let nal_end = (nal_pos + 1..data.len().saturating_sub(3))
+        .find(|&i| {
+            data[i..].starts_with(&[0x00, 0x00, 0x01])
+                || data[i..].starts_with(&[0x00, 0x00, 0x00, 0x01])
+        })
+        .unwrap_or(data.len());
+    Some((nal_type, nal_end))
+}
+
+/// Check if byte-stream contains an IDR keyframe (NAL unit type 5).
+fn is_keyframe(data: &[u8]) -> bool {
+    let mut offset = 0;
+    while let Some((nal_type, next)) = scan_nal_header(data, offset) {
+        if nal_type == 5 {
+            return true;
+        }
+        offset = next;
+    }
+    false
+}
+
+/// Extract SPS (NAL 7) and PPS (NAL 8) from byte-stream including start codes.
+fn extract_sps_pps(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut offset = 0;
+    while let Some((nal_type, next)) = scan_nal_header(data, offset) {
+        // find the actual start code position for slicing
+        let start_offset = (offset..next)
+            .find(|&i| data[i] == 0x00 && data[i + 1] == 0x00)
+            .unwrap_or(offset);
+        if nal_type == 7 || nal_type == 8 {
+            out.extend_from_slice(&data[start_offset..next]);
+        }
+        offset = next;
+    }
+    out
+}
+
+/// Check if byte-stream contains a coded slice NAL (type 1 or 5).
+fn has_data_nal(data: &[u8]) -> bool {
+    let mut offset = 0;
+    while let Some((nal_type, next)) = scan_nal_header(data, offset) {
+        if nal_type == 1 || nal_type == 5 {
+            return true;
+        }
+        offset = next;
+    }
+    false
+}
+
 // ── GstCaptureSource ──
 // Feature-gated: real GStreamer pipeline vs stub (returns None always).
 
@@ -25,12 +96,13 @@ type Result<T> = std::result::Result<T, CoreError>;
 #[cfg(feature = "gstreamer")]
 pub struct GstCaptureSource {
     pipeline: Arc<crate::pipeline::Pipeline>,
+    sps_pps_buf: Option<Vec<u8>>,
 }
 
 #[cfg(feature = "gstreamer")]
 impl GstCaptureSource {
     pub fn new(pipeline: Arc<crate::pipeline::Pipeline>) -> Self {
-        Self { pipeline }
+        Self { pipeline, sps_pps_buf: None }
     }
 }
 
@@ -73,29 +145,47 @@ impl MediaSource for GstCaptureSource {
 
     fn poll_fragment(&mut self) -> Result<Option<Self::Output>> {
         match self.pipeline.pull_sample() {
-            Ok(data) if data.is_empty() => Ok(None),
-            Ok(data) => Ok(Some(InternalPacket::Encoded(EncodedFragment {
-                track_id: "capture".into(),
-                timing: FrameTiming {
-                    dts: 0,
-                    pts: 0,
-                    duration: 0,
-                    wall_clock: Some(std::time::Instant::now()),
-                },
-                flags: FragmentFlags {
-                    keyframe: false,
-                    independent: true,
-                    discardable: false,
-                },
-                codec: "h264".into(),
-                init_data: None,
-                payload: data,
-            }))),
+            Ok((data, pts)) if data.is_empty() => Ok(None),
+            Ok((data, pts)) => {
+                let is_kf = is_keyframe(&data);
+
+                // accumulate SPS/PPS for init_data
+                let sps_pps = extract_sps_pps(&data);
+                if !sps_pps.is_empty() {
+                    self.sps_pps_buf
+                        .get_or_insert_with(Vec::new)
+                        .extend(&sps_pps);
+                }
+
+                // pass accumulated init_data with first data frame, then clear
+                let init_data = if has_data_nal(&data) {
+                    self.sps_pps_buf.take()
+                } else {
+                    None
+                };
+
+                Ok(Some(InternalPacket::Encoded(EncodedFragment {
+                    track_id: "capture".into(),
+                    timing: FrameTiming {
+                        dts: pts,
+                        pts,
+                        duration: 0,
+                        wall_clock: Some(std::time::Instant::now()),
+                    },
+                    flags: FragmentFlags {
+                        keyframe: is_kf,
+                        independent: true,
+                        discardable: false,
+                    },
+                    codec: "h264".into(),
+                    init_data,
+                    payload: data,
+                })))
+            }
             Err(_e) => {
                 // ponytail: treat pull failures as transient (no frame available)
                 Ok(None)
             }
-        }
     }
 }
 
