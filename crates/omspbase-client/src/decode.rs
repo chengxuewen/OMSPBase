@@ -2,7 +2,7 @@
 //!
 //! Feature-gated behind `gstreamer`. In default builds, a no-op stub is provided.
 
-use omspbase_common::error::CoreError;
+use omspbase_media::error::MediaError;
 
 #[cfg(feature = "gstreamer")]
 use gstreamer::prelude::*;
@@ -81,35 +81,35 @@ impl DecodePipeline {
     }
 
     /// Start the pipeline (set to Playing state).
-    pub fn start(&mut self) -> Result<(), CoreError> {
+    pub fn start(&mut self) -> Result<(), MediaError> {
         self.pipeline
             .set_state(gstreamer::State::Playing)
-            .map_err(|e| CoreError::DecoderInit(format!("Pipeline start failed: {e}")))?;
+            .map_err(|e| MediaError::DecoderInit(format!("Pipeline start failed: {e}")))?;
         tracing::info!("Decode pipeline started");
         Ok(())
     }
 
     /// Stop the pipeline (set to Null state).
-    pub fn stop(&self) -> Result<(), CoreError> {
+    pub fn stop(&self) -> Result<(), MediaError> {
         self.pipeline
             .set_state(gstreamer::State::Null)
-            .map_err(|e| CoreError::Unknown(format!("Pipeline stop failed: {e}")))?;
+            .map_err(|e| MediaError::Unknown(format!("Pipeline stop failed: {e}")))?;
         tracing::info!("Decode pipeline stopped");
         Ok(())
     }
 
     /// Push an H.264 byte-stream buffer into the pipeline.
-    pub fn push_h264(&self, data: &[u8]) -> Result<(), CoreError> {
+    pub fn push_h264(&self, data: &[u8]) -> Result<(), MediaError> {
         // ponytail: copy buffer into GStreamer-owned memory
         let mut buffer = gstreamer::Buffer::with_size(data.len())
-            .map_err(|_| CoreError::OutOfMemory)?;
+            .map_err(|_| MediaError::OutOfMemory)?;
         {
             let buffer_ref = buffer.make_mut();
-            buffer_ref.copy_from_slice(0, data).map_err(|e| CoreError::Unknown(format!("buffer copy: {e}")))?;
+            buffer_ref.copy_from_slice(0, data).map_err(|e| MediaError::Unknown(format!("buffer copy: {e}")))?;
         }
         self.appsrc
             .push_buffer(buffer)
-            .map_err(|e| CoreError::Unknown(format!("push_buffer failed: {e}")))?;
+            .map_err(|e| MediaError::Unknown(format!("push_buffer failed: {e}")))?;
         Ok(())
     }
 }
@@ -139,16 +139,16 @@ impl DecodePipeline {
         Self
     }
 
-    pub fn start(&mut self) -> Result<(), CoreError> {
+    pub fn start(&mut self) -> Result<(), MediaError> {
         tracing::warn!("GStreamer decode not available — build with --features gstreamer");
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<(), CoreError> {
+    pub fn stop(&self) -> Result<(), MediaError> {
         Ok(())
     }
 
-    pub fn push_h264(&self, _data: &[u8]) -> Result<(), CoreError> {
+    pub fn push_h264(&self, _data: &[u8]) -> Result<(), MediaError> {
         Ok(())
     }
 }

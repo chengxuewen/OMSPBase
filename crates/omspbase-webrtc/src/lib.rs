@@ -26,6 +26,7 @@ pub use engine::*;
 pub use rtp::*;
 pub use stats::*;
 pub use factory::*;
+pub use data_channel::*;
 
 /// Error type for all WebRTC operations.
 #[derive(Debug, thiserror::Error)]

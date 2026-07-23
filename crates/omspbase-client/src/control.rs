@@ -5,6 +5,7 @@
 
 use omspbase_common::auth::SimplePskAuth;
 use omspbase_common::error::CoreError;
+use omspbase_webrtc::RTCDataChannel;
 use std::collections::VecDeque;
 use tokio::sync::Mutex;
 
@@ -92,15 +93,14 @@ impl ControlSender {
     }
     /// Send a control command immediately via RTCDataChannel.
     /// Signs with HMAC-SHA256 (key: omspbase-control), prefixes 0x01, sends binary.
-    pub async fn send_via_dc(&self, dc: &webrtc::data_channel::RTCDataChannel, cmd: &ControlCommand) -> Result<(), CoreError> {
+    pub async fn send_via_dc(&self, dc: &RTCDataChannel, cmd: &ControlCommand) -> Result<(), CoreError> {
         let body = cmd.to_json_body();
         let tag = self.hmac_sign(&body);
         let mut payload = vec![0x01u8];
         payload.extend_from_slice(&tag);
         payload.extend_from_slice(body.as_bytes());
-        let bytes = bytes::Bytes::from(payload);
-        dc.send(&bytes).await
-            .map_err(|e| CoreError::Internal(format!("dc send: {e}")))?;
+        dc.send(&payload).await
+            .map_err(|e| CoreError::Unknown(format!("dc send: {e}")))?;
         Ok(())
     }
     /// Compute 8-byte HMAC-SHA256 tag with key 'omspbase-control'.
@@ -197,7 +197,6 @@ mod tests {
         sender.send(ControlCommand::Brake(0.5)).await.unwrap();
         assert_eq!(sender.depth().await, 2);
     }
-}
 
     #[test]
     fn steering_and_brake_produce_different_tags() {
@@ -230,3 +229,4 @@ mod tests {
         let tag = sender.sign_command(&ControlCommand::EmergencyStop);
         assert_eq!(tag.len(), 8);
     }
+}

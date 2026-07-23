@@ -6,13 +6,13 @@
 
 use std::sync::Arc;
 
-use omspbase_common::error::CoreError;
+use omspbase_media::error::MediaError;
 use omspbase_media::pipeline::core::{
     EncodedFragment, FormatSpec, FragmentFlags, FrameTiming, InternalPacket, MediaSink,
     MediaSource, MediaType, NodeCapability, NodeInfo, PipelineNode,
 };
 
-type Result<T> = std::result::Result<T, CoreError>;
+type Result<T> = std::result::Result<T, MediaError>;
 
 // ── NAL unit helpers ──
 
@@ -132,6 +132,8 @@ impl MediaSource for FrameSource {
                 tracing::info!("FrameSource: channel disconnected");
                 Ok(None)
             }
+        }
+    }
 }
 
 // ── DecodeSink ──
