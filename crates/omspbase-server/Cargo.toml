@@ -13,8 +13,11 @@ path = "src/main.rs"
 # Shared core crate
 omspbase-common = { path = "../omspbase-common" }
 
-# WebRTC relay (omspbase-webrtc thin wrapper around webrtc-sys libwebrtc)
+# WebRTC relay (optional)
 omspbase-webrtc = { path = "../omspbase-webrtc", optional = true }
+
+# mediasoup SFU (optional, Linux only)
+mediasoup = { version = "0.23", optional = true }
 
 # HTTP + WebSocket
 axum = { version = "0.7", features = ["ws"] }
@@ -31,7 +34,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 prometheus-client = "0.22"
 
-
 # Async utilities
 futures-util = "0.3"
 tokio-stream = "0.1"
@@ -43,7 +45,8 @@ uuid = { version = "1", features = ["v4"] }
 [features]
 default = []
 webrtc = ["dep:omspbase-webrtc"]
-production = ["webrtc"]
+sfu-mediasoup = ["dep:mediasoup"]
+production = ["webrtc", "sfu-mediasoup"]
 
 [dev-dependencies]
 tempfile = "3"
@@ -51,6 +54,7 @@ tower = "0.5"
 http = "1"
 tokio-tungstenite = "0.24"
 base64 = "0.22"
+
 [profile.release]
 opt-level = 3
 lto = true
