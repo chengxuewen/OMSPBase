@@ -3781,6 +3781,7 @@ dependencies = [
  "ffmpeg-the-third",
  "gstreamer",
  "gstreamer-app",
+ "gstreamer-video",
  "omspbase-core",
  "pkg-config",
  "thiserror 2.0.18",
