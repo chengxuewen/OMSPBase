@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use omspbase_webrtc::peer_connection::RTCConfiguration;
 use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+use omspbase_webrtc::traits::PeerConnectionApi;
 use omspbase_webrtc::track::{FrameSink, TrackKind, TrackRef};
 mod common;
 

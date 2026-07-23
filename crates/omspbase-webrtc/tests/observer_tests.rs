@@ -12,6 +12,7 @@ use std::sync::Arc;
 use omspbase_webrtc::peer_connection::RTCConfiguration;
 use omspbase_webrtc::factory::RTCPeerConnectionFactory;
 use omspbase_webrtc::track::TrackKind;
+use omspbase_webrtc::traits::PeerConnectionApi;
 
 // ── Stub backend: callback registration API surface ──
 

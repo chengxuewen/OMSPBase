@@ -13,6 +13,7 @@ use common::loopback::{create_connected_pair, generate_test_frame, FpsCounter};
 
 use omspbase_webrtc::factory::RTCPeerConnectionFactory;
 use omspbase_webrtc::track::{TrackKind, TrackRef};
+use omspbase_webrtc::traits::PeerConnectionApi;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

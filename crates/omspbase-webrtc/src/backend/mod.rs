@@ -90,7 +90,7 @@ pub trait TrackWriteBackend: Send + Sync + 'static {
     async fn write_raw_i420(
         &self, _data: &[u8], _width: u32, _height: u32,
     ) -> Result<(), RTCError> {
-        // Default: no-op for backends without built-in encoding (stub, webrtc-rs)
+        Ok(())
     }
 }
 

@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use omspbase_webrtc::peer_connection::RTCConfiguration;
 use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+use omspbase_webrtc::traits::PeerConnectionApi;
 
 #[tokio::test]
 async fn factory_creates_with_webrtc_sys() {

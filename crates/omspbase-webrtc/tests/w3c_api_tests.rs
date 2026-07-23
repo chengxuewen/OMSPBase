@@ -10,6 +10,7 @@
 mod factory_tests {
     use omspbase_webrtc::peer_connection::{RTCConfiguration, RTCPeerConnectionState};
     use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+    use omspbase_webrtc::traits::PeerConnectionApi;
 
 
     #[test]
@@ -51,6 +52,7 @@ mod factory_tests {
 mod state_tests {
     use omspbase_webrtc::peer_connection::{RTCIceConnectionState, RTCIceGatheringState, RTCConfiguration, RTCPeerConnectionState, RTCSignalingState};
     use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+    use omspbase_webrtc::traits::PeerConnectionApi;
 
 
     #[test]
@@ -107,6 +109,7 @@ mod sdp_tests {
     use omspbase_webrtc::factory::RTCPeerConnectionFactory;
 
     use omspbase_webrtc::sdp::RTCSdpType;
+    use omspbase_webrtc::traits::PeerConnectionApi;
 
     #[test]
     fn create_offer_returns_offer_type() {
@@ -211,6 +214,7 @@ mod sdp_tests {
 mod ice_tests {
     use omspbase_webrtc::peer_connection::{RTCIceCandidate, RTCConfiguration};
     use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+    use omspbase_webrtc::traits::PeerConnectionApi;
 
 
     #[test]
@@ -256,6 +260,7 @@ mod datachannel_tests {
     use omspbase_webrtc::data_channel::{RTCDataChannelInit, RTCDataChannelState};
     use omspbase_webrtc::peer_connection::{RTCConfiguration};
     use omspbase_webrtc::factory::RTCPeerConnectionFactory;
+    use omspbase_webrtc::traits::PeerConnectionApi;
 
 
     #[test]
@@ -364,6 +369,7 @@ mod stats_and_rtp_tests {
     use omspbase_webrtc::stats::{
         RTCInboundRtpStreamStats, RTCPeerConnectionStats, RTCStats,
     };
+    use omspbase_webrtc::traits::PeerConnectionApi;
 
     #[test]
     fn rtc_stats_types_construct() {

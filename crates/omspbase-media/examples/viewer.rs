@@ -1,4 +1,4 @@
-#![cfg(feature = "backend-native")]
+#![cfg(feature = "backend-yuv-sys")]
 
 // omspbase-media viewer — VideoFrame transform demo with egui (grid + single view)
 // Usage: cargo run -p omspbase-media --example viewer --features backend-native
@@ -577,4 +577,10 @@ fn main() -> Result<(), eframe::Error> {
         },
         Box::new(|_cc| Ok(Box::new(App::default()))),
     )
+}
+
+// Stub main for when backend-yuv-sys is not enabled
+#[cfg(not(feature = "backend-yuv-sys"))]
+fn main() {
+    eprintln!("viewer example requires --features backend-yuv-sys");
 }

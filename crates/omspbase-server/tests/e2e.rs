@@ -260,7 +260,7 @@ fn protocol_roundtrip_sdp() {
 
 #[test]
 fn protocol_roundtrip_ice_candidate() {
-    let msg = SignalingMessage::IceCandidate {
+    let msg = SignalingMessage::RTCIceCandidate {
         room_id: "r1".into(),
         target: None,
         candidate: "candidate:1 1 UDP 2130706431 10.0.0.1 8000 typ host".into(),
@@ -270,7 +270,7 @@ fn protocol_roundtrip_ice_candidate() {
     let json = serde_json::to_string(&msg).unwrap();
     let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
     match parsed {
-        SignalingMessage::IceCandidate {
+        SignalingMessage::RTCIceCandidate {
             sdp_mid,
             sdp_mline_index,
             ..
@@ -278,7 +278,7 @@ fn protocol_roundtrip_ice_candidate() {
             assert_eq!(sdp_mid.as_deref(), Some("0"));
             assert_eq!(sdp_mline_index, Some(0));
         }
-        _ => panic!("expected IceCandidate"),
+        _ => panic!("expected RTCIceCandidate"),
     }
 }
 
