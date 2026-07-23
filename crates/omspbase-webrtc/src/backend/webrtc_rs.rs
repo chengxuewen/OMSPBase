@@ -74,6 +74,21 @@ impl WebrtcRsPc {
         self.inner.on_ice_candidate(f);
     }
 
+    /// Set on_ice_connection_state_change callback for ICE monitoring.
+    pub(crate) fn on_ice_connection_state_change(
+        &self,
+        f: Box<
+            dyn FnMut(
+                    webrtc::ice_transport::ice_connection_state::RTCIceConnectionState,
+                ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
+                + Send
+                + Sync
+                + 'static,
+        >,
+    ) {
+        self.inner.on_ice_connection_state_change(f);
+    }
+
     pub(crate) async fn create_data_channel(
         &self,
         label: &str,
@@ -574,7 +589,29 @@ impl WebrtcRsFactory {
             .new_peer_connection(cfg)
             .await
             .map_err(|e| RTCError::RTCPeerConnection(e.to_string()))?;
-        Ok(WebrtcRsPc::new(Arc::new(pc)))
+        let rs_pc = WebrtcRsPc::new(Arc::new(pc));
+
+        // Register ICE connection state monitoring callback
+        rs_pc.on_ice_connection_state_change(Box::new(|state| {
+            let name = match state {
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::New => "New",
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Checking => "Checking",
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Connected => "Connected",
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Completed => "Completed",
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Failed => "Failed",
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Disconnected => "Disconnected",
+                webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Closed => "Closed",
+                _ => "Unknown",
+            };
+            if matches!(state, webrtc::ice_transport::ice_connection_state::RTCIceConnectionState::Failed) {
+                tracing::warn!("ICE connection state: {name} — ICE restart may be needed");
+            } else {
+                tracing::info!("ICE connection state changed: {name}");
+            }
+            Box::pin(async {})
+        }));
+
+        Ok(rs_pc)
     }
 
     /// Create a video track with H.264 RTP codec.

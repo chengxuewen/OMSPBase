@@ -542,7 +542,23 @@ impl webrtc_sys::peer_connection_factory::PeerConnectionObserver for RealObserve
     fn on_data_channel(&self, _: cxx::SharedPtr<webrtc_sys::data_channel::ffi::DataChannel>) {}
     fn on_renegotiation_needed(&self) {}
     fn on_negotiation_needed_event(&self, _: u32) {}
-    fn on_ice_connection_change(&self, _: webrtc_sys::peer_connection::ffi::IceConnectionState) {}
+    fn on_ice_connection_change(&self, state: webrtc_sys::peer_connection::ffi::IceConnectionState) {
+        let state_name = match state {
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionNew => "New",
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionChecking => "Checking",
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionConnected => "Connected",
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionCompleted => "Completed",
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionFailed => "Failed",
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionDisconnected => "Disconnected",
+            webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionClosed => "Closed",
+            _ => "Unknown",
+        };
+        if matches!(state, webrtc_sys::peer_connection::ffi::IceConnectionState::IceConnectionFailed) {
+            tracing::warn!("ICE connection state: {state_name} — ICE restart may be needed");
+        } else {
+            tracing::info!("ICE connection state changed: {state_name}");
+        }
+    }
     fn on_standardized_ice_connection_change(&self, _: webrtc_sys::peer_connection::ffi::IceConnectionState) {}
     fn on_connection_change(&self, _: webrtc_sys::peer_connection::ffi::PeerConnectionState) {}
     fn on_ice_gathering_change(&self, _: webrtc_sys::peer_connection::ffi::IceGatheringState) {}

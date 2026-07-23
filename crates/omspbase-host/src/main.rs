@@ -132,14 +132,31 @@ async fn main() {
         .unwrap_or_else(|| "omspbase-dev".to_string());
     let room_id = "default".to_string(); // ponytail: match remote for E2E
 
+    const MAX_RETRIES: u32 = 5;
+    let mut last_err = None;
     let client = SignalingClient::new(&signaling_url, &psk, &room_id);
-    let (ws_sender, mut ws_receiver) = client
-        .connect()
-        .await
-        .unwrap_or_else(|e| {
-            tracing::error!("Signaling connection failed: {e}");
-            process::exit(1);
-        });
+    let (ws_sender, mut ws_receiver) = {
+        let mut delay = std::time::Duration::from_secs(1);
+        let mut result = None;
+        for attempt in 1..=MAX_RETRIES {
+            match client.connect().await {
+                Ok(pair) => { result = Some(pair); break; }
+                Err(e) => {
+                    tracing::warn!(attempt, max = MAX_RETRIES, "Signaling connect failed: {e}, retrying in {delay:?}");
+                    last_err = Some(e);
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(std::time::Duration::from_secs(16));
+                }
+            }
+        }
+        match result {
+            Some(pair) => pair,
+            None => {
+                tracing::error!("Signaling connection failed after {MAX_RETRIES} attempts: {last_err:?}");
+                process::exit(1);
+            }
+        }
+    };
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // ponytail: wait for remote to join room before sending SDP offer

@@ -92,9 +92,22 @@ async fn main() {
         frame_tx,
     );
     tokio::spawn(async move {
-        if let Err(e) = signaling.connect().await {
-            tracing::error!("Signaling failed: {e}");
+        const MAX_RETRIES: u32 = 5;
+        let mut delay = std::time::Duration::from_secs(1);
+        for attempt in 1..=MAX_RETRIES {
+            match signaling.connect().await {
+                Ok(()) => {
+                    tracing::info!(attempt, "Signaling connection completed");
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!(attempt, max = MAX_RETRIES, "Signaling failed: {e}, retrying in {delay:?}");
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(std::time::Duration::from_secs(16));
+                }
+            }
         }
+        tracing::error!("Signaling connection failed after {MAX_RETRIES} attempts, giving up");
     });
     tracing::info!("Signaling connection initiated to {}", config.server.signaling_url);
 
