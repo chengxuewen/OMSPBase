@@ -12,7 +12,7 @@
 
 use std::process;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
 use omspbase_media::engine::PipelineEngine;

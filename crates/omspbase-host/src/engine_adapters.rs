@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use omspbase_common::error::CoreError;
+use omspbase_media::error::MediaError;
 use omspbase_media::pipeline::core::{
     FormatSpec, InternalPacket, MediaSink, MediaSource, MediaType, NodeCapability,
     NodeInfo, PipelineNode,
@@ -16,7 +16,7 @@ use omspbase_media::pipeline::core::{
 #[cfg(feature = "gstreamer")]
 use omspbase_media::pipeline::core::{EncodedFragment, FragmentFlags, FrameTiming};
 
-type Result<T> = std::result::Result<T, CoreError>;
+type Result<T> = std::result::Result<T, MediaError>;
 
 // ── NAL unit helpers for Annex B byte-stream ──
 
@@ -186,6 +186,7 @@ impl MediaSource for GstCaptureSource {
                 // ponytail: treat pull failures as transient (no frame available)
                 Ok(None)
             }
+        }
     }
 }
 
