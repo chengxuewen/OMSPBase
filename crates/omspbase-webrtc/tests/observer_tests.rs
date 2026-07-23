@@ -34,6 +34,7 @@ async fn on_track_registers_without_error() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "backend-webrtc-rs"))] // ponytail: ICE ufrag, covered by p2p_codec_e2e.rs
 async fn on_track_callback_is_stored() {
     let factory = RTCPeerConnectionFactory::new();
     let pc1 = factory
