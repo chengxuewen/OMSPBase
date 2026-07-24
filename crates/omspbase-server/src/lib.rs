@@ -6,6 +6,7 @@ pub mod config;
 pub mod monitor;
 pub mod relay;
 pub mod room;
+pub mod sfu;
 pub mod signaling;
 
 // Re-export key dependencies for integration tests
