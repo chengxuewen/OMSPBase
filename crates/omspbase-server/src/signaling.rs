@@ -256,6 +256,8 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                             &sig_msg,
                             &server.sfu_manager,
                             &direct_sender,
+                            &tx,
+                            &relay_peer_id,
                         )
                         .await
                         {
@@ -309,13 +311,15 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
     );
 }
 
-/// Handle SFU transport negotiation messages.
+/// Handle SFU transport negotiation and produce/consume messages.
 /// Returns `true` if the message was handled (should not be relayed).
 #[cfg(feature = "sfu-mediasoup")]
 async fn handle_sfu_message(
     msg: &SignalingMessage,
     sfu: &crate::sfu::SfuManager,
     sender: &Arc<tokio::sync::Mutex<SplitSink<WebSocket, Message>>>,
+    broadcast_tx: &tokio::sync::broadcast::Sender<String>,
+    peer_id: &str,
 ) -> bool {
     match msg {
         SignalingMessage::CreateWebRtcTransport {
@@ -388,6 +392,109 @@ async fn handle_sfu_message(
                 .await;
             true
         }
+
+        SignalingMessage::Produce {
+            room_id,
+            transport_direction,
+            kind,
+            rtp_parameters,
+        } => {
+            // ponytail: only process "send" direction; recv produce is a protocol error
+            if !matches!(transport_direction, omspbase_common::protocol::TransportDirection::Send) {
+                let error = SignalingMessage::Error {
+                    code: 4000,
+                    message: "Produce requires send transport".into(),
+                };
+                let _ = sender
+                    .lock()
+                    .await
+                    .send(Message::Text(send_msg(&error).unwrap().into()))
+                    .await;
+                return true;
+            }
+
+            match sfu
+                .create_producer(room_id, peer_id, kind, rtp_parameters.clone())
+                .await
+            {
+                Ok(result) => {
+                    // Respond to producer
+                    let response = SignalingMessage::Produced {
+                        room_id: room_id.clone(),
+                        producer_id: result.producer_id.clone(),
+                    };
+                    let _ = sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&response).unwrap().into()))
+                        .await;
+
+                    // Broadcast NewProducer to all peers in room
+                    let broadcast = SignalingMessage::NewProducer {
+                        room_id: room_id.clone(),
+                        producer_id: result.producer_id,
+                        peer_id: peer_id.to_string(),
+                        kind: result.kind,
+                    };
+                    let _ = broadcast_tx.send(serde_json::to_string(&broadcast).unwrap());
+                    tracing::info!(
+                        "SFU: broadcast NewProducer for peer {} in room {}",
+                        peer_id, room_id
+                    );
+                }
+                Err(e) => {
+                    let error = SignalingMessage::Error {
+                        code: 5000,
+                        message: format!("Producer creation failed: {e}"),
+                    };
+                    let _ = sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&error).unwrap().into()))
+                        .await;
+                }
+            }
+            true
+        }
+
+        SignalingMessage::Consume {
+            room_id,
+            producer_id,
+            rtp_capabilities,
+        } => {
+            match sfu
+                .create_consumer(room_id, peer_id, producer_id, rtp_capabilities.clone())
+                .await
+            {
+                Ok(result) => {
+                    let response = SignalingMessage::Consumed {
+                        room_id: room_id.clone(),
+                        consumer_id: result.consumer_id,
+                        producer_id: result.producer_id,
+                        kind: result.kind,
+                        rtp_parameters: result.rtp_parameters_json,
+                    };
+                    let _ = sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&response).unwrap().into()))
+                        .await;
+                }
+                Err(e) => {
+                    let error = SignalingMessage::Error {
+                        code: 5000,
+                        message: format!("Consumer creation failed: {e}"),
+                    };
+                    let _ = sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&error).unwrap().into()))
+                        .await;
+                }
+            }
+            true
+        }
+
         _ => false,
     }
 }

@@ -9,7 +9,6 @@
 
 #[cfg(feature = "sfu-mediasoup")]
 use dashmap::DashMap;
-#[cfg(feature = "sfu-mediasoup")]
 use omspbase_common::protocol;
 
 #[cfg(feature = "sfu-mediasoup")]
@@ -25,6 +24,20 @@ mod imp {
         pub transport_id: String,
         pub ice_parameters: protocol::IceParameters,
         pub dtls_parameters: protocol::DtlsParameters,
+    }
+
+    /// Result of a producer creation request.
+    pub struct ProduceResult {
+        pub producer_id: String,
+        pub kind: protocol::MediaKind,
+    }
+
+    /// Result of a consumer creation request.
+    pub struct ConsumeResult {
+        pub consumer_id: String,
+        pub producer_id: String,
+        pub kind: protocol::MediaKind,
+        pub rtp_parameters_json: serde_json::Value,
     }
 
     /// Per-peer state: send/recv transports and active producers/consumers.
@@ -189,6 +202,114 @@ mod imp {
         pub fn room_count(&self) -> usize {
             self.rooms.len()
         }
+
+        /// Create a producer for a peer on its send transport.
+        pub async fn create_producer(
+            &self,
+            room_id: &str,
+            peer_id: &str,
+            kind: &protocol::MediaKind,
+            rtp_parameters_json: serde_json::Value,
+        ) -> Result<ProduceResult, String> {
+            // Convert JSON RTP parameters to mediasoup type
+            let rtp_parameters: RtpParameters = serde_json::from_value(rtp_parameters_json)
+                .map_err(|e| format!("Invalid RTP parameters: {e}"))?;
+
+            let ms_kind = match kind {
+                protocol::MediaKind::Audio => MediaKind::Audio,
+                protocol::MediaKind::Video => MediaKind::Video,
+            };
+
+            let room = self.rooms.get_mut(room_id)
+                .ok_or_else(|| format!("Room {} not found for produce", room_id))?;
+            let mut peer = room.peers.get_mut(peer_id)
+                .ok_or_else(|| format!("Peer {} not found in room {}", peer_id, room_id))?;
+
+            let transport = peer.send_transport.as_ref()
+                .ok_or_else(|| format!("No send transport for peer {}", peer_id))?;
+
+            // ponytail: construct ProducerOptions; let compiler validate the exact constructor
+            let producer_options = ProducerOptions::new(ms_kind, rtp_parameters);
+            let producer = transport.produce(producer_options).await
+                .map_err(|e| format!("Failed to create producer: {e}"))?;
+
+            let producer_id = producer.id().to_string();
+            tracing::info!(
+                "Producer {} ({:?}) created for peer {} in room {}",
+                producer_id, kind, peer_id, room_id
+            );
+
+            peer.producers.push(producer);
+
+            Ok(ProduceResult {
+                producer_id,
+                kind: kind.clone(),
+            })
+        }
+
+        /// Create a consumer for a peer on its recv transport,
+        /// subscribing to an existing producer in the room.
+        pub async fn create_consumer(
+            &self,
+            room_id: &str,
+            peer_id: &str,
+            producer_id: &str,
+            rtp_capabilities_json: serde_json::Value,
+        ) -> Result<ConsumeResult, String> {
+            // Convert JSON RTP capabilities to mediasoup type
+            let rtp_capabilities: RtpCapabilities = serde_json::from_value(rtp_capabilities_json)
+                .map_err(|e| format!("Invalid RTP capabilities: {e}"))?;
+
+            // Find the producer and extract its id + kind
+            // ponytail: read-lock first to get producer info, then write-lock for consumer insert
+            let (producer_id_ms, producer_kind) = {
+                let room = self.rooms.get(room_id)
+                    .ok_or_else(|| format!("Room {} not found for consume", room_id))?;
+                room.peers.iter()
+                    .find_map(|entry| {
+                        entry.producers.iter()
+                            .find(|p| p.id().to_string() == producer_id)
+                            .map(|p| (p.id(), p.kind()))
+                    })
+                    .ok_or_else(|| {
+                        format!("Producer {} not found in room {}", producer_id, room_id)
+                    })?
+            };
+
+            // Now get the consumer peer's recv transport
+            let room = self.rooms.get_mut(room_id)
+                .ok_or_else(|| format!("Room {} not found", room_id))?;
+            let mut peer = room.peers.get_mut(peer_id)
+                .ok_or_else(|| format!("Peer {} not found in room {}", peer_id, room_id))?;
+            let transport = peer.recv_transport.as_ref()
+                .ok_or_else(|| format!("No recv transport for peer {}", peer_id))?;
+
+            let consumer_options = ConsumerOptions::new(producer_id_ms, rtp_capabilities);
+            let consumer = transport.consume(consumer_options).await
+                .map_err(|e| format!("Failed to create consumer: {e}"))?;
+
+            let consumer_id = consumer.id().to_string();
+            let protocol_kind = match producer_kind {
+                MediaKind::Audio => protocol::MediaKind::Audio,
+                MediaKind::Video => protocol::MediaKind::Video,
+            };
+            let rtp_parameters_json = serde_json::to_value(consumer.rtp_parameters())
+                .unwrap_or_default();
+
+            tracing::info!(
+                "Consumer {} created for peer {} (producer: {}, kind: {:?})",
+                consumer_id, peer_id, producer_id, protocol_kind
+            );
+
+            peer.consumers.push(consumer);
+
+            Ok(ConsumeResult {
+                consumer_id,
+                producer_id: producer_id.to_string(),
+                kind: protocol_kind,
+                rtp_parameters_json,
+            })
+        }
     }
 }
 
@@ -196,6 +317,8 @@ mod imp {
 
 #[cfg(not(feature = "sfu-mediasoup"))]
 mod imp {
+    use super::protocol;
+
     /// Stub SfuManager — SFU not available.
     pub struct SfuManager;
 
@@ -214,6 +337,28 @@ mod imp {
         ) -> Result<TransportCreated, String> {
             Err("sfu-mediasoup feature not enabled".into())
         }
+
+        /// Stub — returns error in non-SFU builds.
+        pub async fn create_producer(
+            &self,
+            _room_id: &str,
+            _peer_id: &str,
+            _kind: &protocol::MediaKind,
+            _rtp_parameters_json: serde_json::Value,
+        ) -> Result<ProduceResult, String> {
+            Err("sfu-mediasoup feature not enabled".into())
+        }
+
+        /// Stub — returns error in non-SFU builds.
+        pub async fn create_consumer(
+            &self,
+            _room_id: &str,
+            _peer_id: &str,
+            _producer_id: &str,
+            _rtp_capabilities_json: serde_json::Value,
+        ) -> Result<ConsumeResult, String> {
+            Err("sfu-mediasoup feature not enabled".into())
+        }
     }
 
     /// Stub TransportCreated — SFU not available.
@@ -224,6 +369,12 @@ mod imp {
 
     /// Stub SfuPeer — SFU not available.
     pub struct SfuPeer;
+
+    /// Stub ProduceResult — SFU not available.
+    pub struct ProduceResult;
+
+    /// Stub ConsumeResult — SFU not available.
+    pub struct ConsumeResult;
 }
 
-pub use imp::{SfuManager, SfuPeer, SfuRoom, TransportCreated};
+pub use imp::{SfuManager, SfuPeer, SfuRoom, TransportCreated, ProduceResult, ConsumeResult};

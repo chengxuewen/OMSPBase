@@ -92,6 +92,49 @@ pub enum SignalingMessage {
         is_keyframe: bool,
         data_base64: String,
     },
+
+    // ── SFU produce/consume (mediasoup) ─────────────────────────
+
+    /// Peer asks to produce media on its send transport.
+    /// rtp_parameters is opaque JSON — server passes it through to mediasoup.
+    Produce {
+        room_id: String,
+        transport_direction: TransportDirection,
+        kind: MediaKind,
+        rtp_parameters: serde_json::Value,
+    },
+
+    /// Server confirms producer created.
+    Produced {
+        room_id: String,
+        producer_id: String,
+    },
+
+    /// Server broadcasts a new producer to all peers in the room.
+    NewProducer {
+        room_id: String,
+        producer_id: String,
+        peer_id: String,
+        kind: MediaKind,
+    },
+
+    /// Peer asks to consume a producer on its recv transport.
+    /// rtp_capabilities is opaque JSON — server passes it through to mediasoup.
+    Consume {
+        room_id: String,
+        producer_id: String,
+        rtp_capabilities: serde_json::Value,
+    },
+
+    /// Server confirms consumer created.
+    Consumed {
+        room_id: String,
+        consumer_id: String,
+        producer_id: String,
+        kind: MediaKind,
+        /// RTP parameters needed by the consumer to decode the stream.
+        rtp_parameters: serde_json::Value,
+    },
     // ponytail: add frame ack/retransmit when reliability matters
 }
 
@@ -133,6 +176,14 @@ pub struct Fingerprint {
 pub enum PeerRole {
     Host,
     Remote,
+}
+
+/// Media kind for produce/consume.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaKind {
+    Audio,
+    Video,
 }
 
 #[cfg(test)]
@@ -342,5 +393,87 @@ mod tests {
         assert!(json.contains(r#""type":"connect_web_rtc_transport""#));
         let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, SignalingMessage::ConnectWebRtcTransport { .. }));
+    }
+
+    #[test]
+    fn roundtrip_media_kind() {
+        assert_eq!(serde_json::to_string(&MediaKind::Audio).unwrap(), r#""audio""#);
+        assert_eq!(serde_json::to_string(&MediaKind::Video).unwrap(), r#""video""#);
+        let kind: MediaKind = serde_json::from_str(r#""audio""#).unwrap();
+        assert_eq!(kind, MediaKind::Audio);
+    }
+
+    #[test]
+    fn roundtrip_produce() {
+        let msg = SignalingMessage::Produce {
+            room_id: "room-1".into(),
+            transport_direction: TransportDirection::Send,
+            kind: MediaKind::Video,
+            rtp_parameters: serde_json::json!({"codecs": [{"mimeType": "video/VP8"}]}),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"produce""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            SignalingMessage::Produce { room_id, kind, .. } => {
+                assert_eq!(room_id, "room-1");
+                assert_eq!(kind, MediaKind::Video);
+            }
+            _ => panic!("expected Produce"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_produced() {
+        let msg = SignalingMessage::Produced {
+            room_id: "room-1".into(),
+            producer_id: "prod-1".into(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"produced""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::Produced { .. }));
+    }
+
+    #[test]
+    fn roundtrip_new_producer() {
+        let msg = SignalingMessage::NewProducer {
+            room_id: "room-1".into(),
+            producer_id: "prod-1".into(),
+            peer_id: "peer-a".into(),
+            kind: MediaKind::Audio,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"new_producer""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::NewProducer { .. }));
+    }
+
+    #[test]
+    fn roundtrip_consume() {
+        let msg = SignalingMessage::Consume {
+            room_id: "room-1".into(),
+            producer_id: "prod-1".into(),
+            rtp_capabilities: serde_json::json!({"codecs": [{"mimeType": "video/VP8"}]}),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"consume""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::Consume { .. }));
+    }
+
+    #[test]
+    fn roundtrip_consumed() {
+        let msg = SignalingMessage::Consumed {
+            room_id: "room-1".into(),
+            consumer_id: "cons-1".into(),
+            producer_id: "prod-1".into(),
+            kind: MediaKind::Video,
+            rtp_parameters: serde_json::json!({"codecs": [{"mimeType": "video/VP8"}]}),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"consumed""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::Consumed { .. }));
     }
 }
