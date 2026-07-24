@@ -3031,9 +3031,13 @@ webrtc-rs 视频管线完整:
 **日期**: 2026-07-24
 
 **决策**: 建立 Docker 和 CI 基础设施支持 mediasoup SFU 开发。
-- P1: Dockerfile (多阶段) + docker-compose.yml
-- P2: sfu-mediasoup feature flag + test-mediasoup CI job
-- P3: DevContainer + 文档 (待定)
+- P1-P3 全部完成: Dockerfile + docker-compose + DevContainer + 文档
+- sfu-mediasoup feature flag + test-mediasoup CI job
 - Cargo.lock 必须与依赖变更一同提交 (约束规则)
+- 已完成 Phase 2a-2d: SfuManager → Transport → Produce/Consume → Integration
+- 新增文件: sfu.rs (370行), e2e_sfu.rs (236行), Dockerfile, docker-compose.yml, devcontainer.json
+- 修改文件: protocol.rs (+252), signaling.rs (+280), main.rs (+30), room.rs (+8)
 
-**关联**: D184, D186
+SFU 平台: macOS cargo check only · Linux full build+test · Docker 统一开发
+
+**关联**: D184
