@@ -12,6 +12,14 @@ services:
     environment:
       - RUST_LOG=debug
     command: cargo run --bin omspbase-server
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "4G"
+        reservations:
+          cpus: "1"
+          memory: "2G"
 
 volumes:
   cargo-cache:
