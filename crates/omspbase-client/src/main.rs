@@ -82,7 +82,7 @@ async fn main() {
     };
     // Phase 5: Connect to server signaling via WebSocket
     let psk = config.psk.as_deref().unwrap_or("omspbase-dev").to_string();
-    let (frame_tx, frame_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+    let (frame_tx, frame_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(10);
 
 
     let signaling = signaling::SignalingClient::new_with_frame_tx(

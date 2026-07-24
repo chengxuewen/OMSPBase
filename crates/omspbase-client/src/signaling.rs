@@ -13,7 +13,7 @@ pub struct SignalingClient {
     server_url: String,
     psk: String,
     room_id: String,
-    frame_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>,
+    frame_tx: Option<tokio::sync::mpsc::Sender<Vec<u8>>>, 
 }
 impl SignalingClient {
     /// Create a new signaling client.
@@ -33,7 +33,7 @@ impl SignalingClient {
         server_url: &str,
         psk: &str,
         room_id: &str,
-        frame_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+        frame_tx: tokio::sync::mpsc::Sender<Vec<u8>>, 
     ) -> Self {
         Self {
             server_url: server_url.to_string(),
@@ -208,7 +208,7 @@ impl SignalingClient {
                                             // ponytail: WS frame relay still works for bootstrapping;
                                             // once WebRTC DC is established, frames arrive via on_data_channel
                                             if let Some(ref tx) = self.frame_tx {
-                                                if tx.send(data).is_err() {
+                                                if tx.send(data).await.is_err() {
                                                     tracing::warn!("Signaling: frame receiver dropped");
                                                 }
                                             }
@@ -232,7 +232,7 @@ impl SignalingClient {
                                                     Ok(data) => {
                                                         let size = data.len();
                                                         if let Some(ref tx) = self.frame_tx {
-                                                            if tx.send(data).is_err() {
+                                                            if tx.send(data).await.is_err() {
                                                                 tracing::warn!("Signaling: frame receiver dropped");
                                                             }
                                                         }

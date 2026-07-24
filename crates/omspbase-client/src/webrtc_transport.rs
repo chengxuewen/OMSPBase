@@ -18,14 +18,14 @@ pub struct WebrtcTransport {
     factory: RTCPeerConnectionFactory,
     pc: Mutex<Option<RTCPeerConnection>>,
     dc: Arc<Mutex<Option<RTCDataChannel>>>,
-    frame_tx: mpsc::UnboundedSender<Vec<u8>>,
-    ice_tx: mpsc::UnboundedSender<String>,
+    frame_tx: mpsc::Sender<Vec<u8>>,
+    ice_tx: mpsc::Sender<String>, 
     dc_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 /// Convenience: create ICE channel pair.
-pub fn ice_channel() -> (mpsc::UnboundedSender<String>, mpsc::UnboundedReceiver<String>) {
-    mpsc::unbounded_channel()
+pub fn ice_channel() -> (mpsc::Sender<String>, mpsc::Receiver<String>) {
+    mpsc::channel(10)
 }
 
 impl WebrtcTransport {
@@ -34,8 +34,8 @@ impl WebrtcTransport {
     /// `frame_tx` — forwards received RTCDataChannel messages to the decode pipeline.
     /// `ice_tx` — forwards ICE candidate JSON for sending via signaling WS.
     pub fn new(
-        frame_tx: mpsc::UnboundedSender<Vec<u8>>,
-        ice_tx: mpsc::UnboundedSender<String>,
+        frame_tx: mpsc::Sender<Vec<u8>>,
+        ice_tx: mpsc::Sender<String>,
     ) -> Self {
         Self {
             factory: RTCPeerConnectionFactory::new(),
@@ -96,7 +96,7 @@ impl WebrtcTransport {
                                 let size = data.len();
                                 tracing::debug!("Signaling: frame received via RTCDataChannel ({} bytes)", size);
                                 tracing::info!("Signaling: frame received via RTCDataChannel ({} bytes)", size);
-                                let _ = frame_tx.send(data);
+                                let _ = frame_tx.send(data).await;
                             }
                             Some(RTCDataChannelEvent::Closed) | None => break,
                             _ => {} // Open, Error — ignore
@@ -115,7 +115,7 @@ impl WebrtcTransport {
                 if let Some(c) = candidate {
                     if let Ok(init) = c.to_json() {
                         if let Ok(json) = serde_json::to_string(&init) {
-                            let _ = ice_tx.send(json);
+                            let _ = ice_tx.send(json).await;
                         }
                     }
                 }

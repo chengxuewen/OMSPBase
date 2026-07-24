@@ -12,7 +12,7 @@ use omspbase_common::error::CoreError;
 #[cfg(feature = "webrtc")]
 pub struct Transport {
     _server_addr: String,
-    rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+    rx: Option<tokio::sync::mpsc::Receiver<Vec<u8>>>, 
 }
 
 #[cfg(feature = "webrtc")]
@@ -27,7 +27,7 @@ impl Transport {
 
     pub fn new_with_receiver(
         server_addr: &str,
-        rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>, 
     ) -> Self {
         tracing::info!("Remote transport targeting {} (with frame receiver)", server_addr);
         Self {
@@ -58,7 +58,7 @@ impl Transport {
 /// Stub when `webrtc` feature is disabled.
 #[cfg(not(feature = "webrtc"))]
 pub struct Transport {
-    rx: Option<tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>>,
+    rx: Option<tokio::sync::mpsc::Receiver<Vec<u8>>>, 
 }
 
 #[cfg(not(feature = "webrtc"))]
@@ -70,7 +70,7 @@ impl Transport {
 
     pub fn new_with_receiver(
         server_addr: &str,
-        rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>, 
     ) -> Self {
         tracing::info!("Remote transport to {} (stub, with frame receiver)", server_addr);
         Self { rx: Some(rx) }

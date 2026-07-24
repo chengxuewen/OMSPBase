@@ -59,12 +59,12 @@ fn is_keyframe(data: &[u8]) -> bool {
 /// Wraps an unbounded MPSC receiver for frames arriving from WebRTC transport.
 /// Yields encoded H.264 byte-stream fragments to the pipeline.
 pub struct FrameSource {
-    rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
     frame_num: u64,
 }
 
 impl FrameSource {
-    pub fn new(rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>) -> Self {
+    pub fn new(rx: tokio::sync::mpsc::Receiver<Vec<u8>>) -> Self {
         Self { rx, frame_num: 0 }
     }
 }
