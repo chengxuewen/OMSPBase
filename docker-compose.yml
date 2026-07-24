@@ -7,7 +7,7 @@ services:
       - .:/workspace
       - cargo-cache:/workspace/target
     ports:
-      - "8000:8000"
+      - "9800:9800"
       - "40000-40100:40000-40100/udp"
     environment:
       - RUST_LOG=debug

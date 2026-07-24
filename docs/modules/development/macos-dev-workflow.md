@@ -76,7 +76,7 @@ host:
   id: "host-001"
 
 signaling:
-  ws_url: "ws://localhost:8000/ws"   # 指向 Docker 中的 Server
+  ws_url: "ws://localhost:9800/ws"   # 指向 Docker 中的 Server
 
 media:
   camera: "/dev/video0"              # macOS 摄像头设备
@@ -102,7 +102,7 @@ media:
 version: 1
 
 server:
-  signaling_url: "ws://localhost:8000/ws"
+  signaling_url: "ws://localhost:9800/ws"
 
 # psk: "omspbase-dev"        # 信号认证预共享密钥（默认值）
 ```
@@ -172,7 +172,7 @@ docker compose logs -f server          # Server 日志
 | 40000-40100/udp | Server (Docker) | mediasoup RTP/RTCP 媒体流 |
 | 9999 | Host (macOS) | 紧急控制 UDP |
 
-macOS 本机端口 8000 由 Docker 端口映射转发到容器内，Host/Client 连接 `ws://localhost:8000/ws` 即可。
+macOS 本机端口 8000 由 Docker 端口映射转发到容器内，Host/Client 连接 `ws://localhost:9800/ws` 即可。
 
 ## 编译加速
 
@@ -200,7 +200,7 @@ docker volume rm omspbase_cargo-cache
 
 ### Docker 网络
 
-**问题**：Host/Client 无法连接 `ws://localhost:8000`
+**问题**：Host/Client 无法连接 `ws://localhost:9800`
 
 ```bash
 # 检查 Server 是否运行
@@ -210,11 +210,11 @@ docker compose ps
 docker compose logs server --tail 20
 
 # 测试端口连通性
-curl -v http://localhost:8000/ 2>&1 | head -5
+curl -v http://localhost:9800/ 2>&1 | head -5
 
 # 如果端口冲突：
-sudo lsof -i :8000
-# 修改 docker-compose.yml 左侧端口映射，如 "18000:8000"
+sudo lsof -i :9800
+# 修改 docker-compose.yml 左侧端口映射，如 "18000:9800"
 ```
 
 ### STUN / NAT 穿透
