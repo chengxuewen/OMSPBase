@@ -193,16 +193,33 @@ mod imp {
             })
         }
 
+        /// Remove a peer from a room, cleaning up transports, producers, and consumers.
+        /// Returns true if the peer was found and removed.
+        /// If the room becomes empty after removal, the Router is destroyed.
+        pub fn remove_peer(&self, room_id: &str, peer_id: &str) -> bool {
+            if let Some(mut room) = self.rooms.get_mut(room_id) {
+                let removed = room.peers.remove(peer_id).is_some();
+                if removed {
+                    tracing::info!("Peer {} removed from SFU room {}", peer_id, room_id);
+                    if room.peers.is_empty() {
+                        drop(room);
+                        self.remove_room(room_id);
+                    }
+                }
+                removed
+            } else {
+                false
+            }
+        }
+
         /// Remove a room and its Router (stops forwarding for all peers).
         pub fn remove_room(&self, room_id: &str) -> bool {
-            self.rooms.remove(room_id).is_some()
+            let existed = self.rooms.remove(room_id).is_some();
+            if existed {
+                tracing::info!("SFU room {} destroyed", room_id);
+            }
+            existed
         }
-
-        /// Number of active rooms.
-        pub fn room_count(&self) -> usize {
-            self.rooms.len()
-        }
-
         /// Create a producer for a peer on its send transport.
         pub async fn create_producer(
             &self,
@@ -358,6 +375,21 @@ mod imp {
             _rtp_capabilities_json: serde_json::Value,
         ) -> Result<ConsumeResult, String> {
             Err("sfu-mediasoup feature not enabled".into())
+        }
+
+        /// Stub — no-op in non-SFU builds.
+        pub fn remove_peer(&self, _room_id: &str, _peer_id: &str) -> bool {
+            false
+        }
+
+        /// Stub — no-op in non-SFU builds.
+        pub fn remove_room(&self, _room_id: &str) -> bool {
+            false
+        }
+
+        /// Stub — returns 0.
+        pub fn room_count(&self) -> usize {
+            0
         }
     }
 

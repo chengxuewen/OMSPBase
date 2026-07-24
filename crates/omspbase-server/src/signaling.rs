@@ -248,6 +248,14 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
             Message::Text(text) => {
                 let text_str = text.to_string();
 
+                // Handle RoomLeave — relay to peers then disconnect (cleanup in disconnect path)
+                if let Ok(sig) = serde_json::from_str::<SignalingMessage>(&text_str)
+                    && matches!(sig, SignalingMessage::RoomLeave { .. })
+                {
+                    let _ = tx.send(text_str);
+                    break;
+                }
+
                 // Check for SFU transport messages (server-side handling)
                 #[cfg(feature = "sfu-mediasoup")]
                 {
@@ -296,7 +304,22 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
     }
 
     relay_handle.abort();
-    server.room_manager.leave_room(&relay_room, &relay_peer_id);
+
+    // Clean up SFU resources for the disconnecting peer
+    #[cfg(feature = "sfu-mediasoup")]
+    {
+        server.sfu_manager.remove_peer(&relay_room, &relay_peer_id);
+        tracing::info!("SFU: cleaned up peer {} in room {}", relay_peer_id, relay_room);
+    }
+
+    #[allow(unused_variables)]
+    let room_removed = server.room_manager.leave_room(&relay_room, &relay_peer_id);
+
+    // If room became empty, also remove it from SFU
+    #[cfg(feature = "sfu-mediasoup")]
+    if room_removed {
+        server.sfu_manager.remove_room(&relay_room);
+    }
 
     let leave_msg = SignalingMessage::RoomLeave {
         room_id: relay_room.clone(),

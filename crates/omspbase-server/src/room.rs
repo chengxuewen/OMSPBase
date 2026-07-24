@@ -65,7 +65,8 @@ impl RoomManager {
     }
 
     /// Leave a room (clear the peer's slot; remove room if empty).
-    pub fn leave_room(&self, room_id: &str, peer_id: &str) {
+    /// Returns true if the room was removed (became empty).
+    pub fn leave_room(&self, room_id: &str, peer_id: &str) -> bool {
         let id = room_id.to_string();
         if let Some(mut room) = self.rooms.get_mut(&id) {
             if room.host.as_deref() == Some(peer_id) {
@@ -78,6 +79,11 @@ impl RoomManager {
         }
         // Remove empty rooms (ponytail: lazy cleanup — only on leave; add periodic GC if rooms accumulate)
         self.rooms.retain(|_, r| r.host.is_some() || r.remote.is_some());
+        let room_gone = !self.rooms.contains_key(&id);
+        if room_gone {
+            tracing::info!("Room {} destroyed (last peer left)", room_id);
+        }
+        room_gone
     }
 
     /// Get the other peer in the room (returns the peer_id to relay messages to).
