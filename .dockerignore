@@ -1,0 +1,26 @@
+# Rust build artifacts (huge - must exclude)
+target/
+
+# Git
+.git/
+
+# Node modules (if any)
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker itself
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Temporary files
+*.tmp
+*.swp
+*~
