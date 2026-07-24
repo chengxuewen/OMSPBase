@@ -61,7 +61,7 @@ jobs:
       - run: pixi run test-gstreamer
 
   test-mediasoup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  # mediasoup prebuild base (widest glibc compatibility)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
