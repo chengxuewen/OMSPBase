@@ -1,8 +1,8 @@
 # OMSPBase Status
 
-**生成**: 2026-07-24 | 决策: 185+ (D1-D185) | Phase: 2 完成 | 67 commits
+**生成**: 2026-07-24 | 决策: 186+ (D1-D186) | Phase: 2 完成 | 70 commits
 
-**当前**: 7 crate workspace。Phase 2 mediasoup SFU 集成全部完成 (2a-2d)。Docker/CI/DevContainer 就位。P2P 管线生产就绪 (重连/ICE/STUN/房间配置)。
+**当前**: 7 crate workspace。Phase 2 mediasoup SFU 集成全部完成 (2a-2d)。Docker/CI/DevContainer 就位，全部使用 Ubuntu 22.04 LTS (mediasoup 预构建基线)。macOS 混合开发工作流 (Host/Client 原生 + Server Docker)。P2P 管线生产就绪 (重连/ICE/STUN/房间配置)。
 
 ## 测试
 

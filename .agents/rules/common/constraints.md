@@ -21,6 +21,8 @@ Common mistake: Forgetting to `git add Cargo.lock` after `Cargo.toml` changes. T
 
 ### mediasoup Only Builds on Linux x86_64
 - mediasoup's C++ Worker (compiled via meson/ninja) is a **Linux x86_64-only** native binary. It does not build on macOS ARM64 or Windows.
+- **Ubuntu 22.04 LTS is the recommended base** (mediasoup upstream uses it for prebuilt binaries, widest glibc compatibility).
+- Dockerfile uses `ubuntu:22.04` + rustup (stable), CI uses `ubuntu-22.04` for test-mediasoup job.
 - **macOS workflow**: `cargo check --features sfu-mediasoup` works (checks Rust bindings), but `cargo build` or `cargo test` with `sfu-mediasoup` fails. Full compilation and testing require a Linux environment.
 - **Docker workflow**: The `dev` container image (rust:stable-bookworm + meson) provides the full mediasoup build environment.
 - **CI**: The `test-mediasoup` job runs on `ubuntu-latest` only (see `.github/workflows/ci.yml`).

@@ -91,10 +91,10 @@ cargo clippy --features sfu-mediasoup --all-targets -- -D warnings
 
 | 阶段 | 用途 | 基础镜像 |
 |------|------|----------|
-| `base` | Rust + 系统依赖 + meson | rust:stable-bookworm |
+| `base` | Rust + 系统依赖 + meson | ubuntu:22.04 |
 | `dev` | 开发环境（源码 + cargo fetch） | base |
 | `builder` | release 编译 | base |
-| `runtime` | 最小运行时 | debian:bookworm-slim |
+| `runtime` | 最小运行时 | ubuntu:22.04 |
 
 ## 端口映射
 

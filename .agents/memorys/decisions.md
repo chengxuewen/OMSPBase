@@ -3041,3 +3041,20 @@ webrtc-rs 视频管线完整:
 SFU 平台: macOS cargo check only · Linux full build+test · Docker 统一开发
 
 **关联**: D184
+**关联**: D184
+
+---
+
+## D186: 统一使用 Ubuntu 22.04 LTS
+
+**状态**: ✅
+**日期**: 2026-07-24
+
+**决策**: 全部切换到 Ubuntu 22.04 LTS。
+- mediasoup 上游使用 22.04 构建预编译二进制 (最广 glibc 兼容)
+- Dockerfile: base + runtime 均使用 ubuntu:22.04
+- CI: test-mediasoup job 明确使用 ubuntu-22.04 (不再依赖 ubuntu-latest)
+- Rust 通过 rustup 安装 (stable channel, 匹配 rust-toolchain.toml)
+- 其他 CI jobs (check/test/clippy) 保持 ubuntu-latest
+
+**关联**: D185
