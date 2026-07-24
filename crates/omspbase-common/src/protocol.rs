@@ -50,6 +50,33 @@ pub enum SignalingMessage {
         sdp_mline_index: Option<u16>,
     },
 
+    // ── SFU transport negotiation (mediasoup) ────────────────────
+
+    /// Request Server to create a WebRTC transport for this peer.
+    /// The Server (SFU) creates the transport and returns parameters.
+    CreateWebRtcTransport {
+        room_id: String,
+        peer_id: String,
+        direction: TransportDirection,
+    },
+
+    /// Server responds with transport parameters needed by the client.
+    WebRtcTransportCreated {
+        room_id: String,
+        peer_id: String,
+        transport_id: String,
+        ice_parameters: IceParameters,
+        dtls_parameters: DtlsParameters,
+    },
+
+    /// Client sends back DTLS parameters to connect the transport.
+    ConnectWebRtcTransport {
+        room_id: String,
+        peer_id: String,
+        transport_id: String,
+        dtls_parameters: DtlsParameters,
+    },
+
     /// Error response from Server.
     Error {
         code: u16,
@@ -65,6 +92,39 @@ pub enum SignalingMessage {
         is_keyframe: bool,
         data_base64: String,
     },
+    // ponytail: add frame ack/retransmit when reliability matters
+}
+
+/// Direction of a WebRTC transport (send-only or recv-only).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TransportDirection {
+    Send,
+    Recv,
+}
+
+/// ICE parameters returned after WebRTC transport creation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IceParameters {
+    pub username_fragment: String,
+    pub password: String,
+}
+
+/// DTLS parameters for transport connection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DtlsParameters {
+    pub fingerprints: Vec<Fingerprint>,
+    /// "auto" | "client" | "server"
+    pub role: String,
+}
+
+/// A DTLS fingerprint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Fingerprint {
+    /// e.g. "sha-256"
+    pub algorithm: String,
+    /// hex-encoded fingerprint value
+    pub value: String,
 }
 
 /// Role of a peer in a room.
@@ -115,7 +175,6 @@ mod tests {
         let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
         assert!(matches!(parsed, SignalingMessage::RTCIceCandidate { .. }));
     }
-}
 
     #[test]
     fn roundtrip_room_joined() {
@@ -227,3 +286,61 @@ mod tests {
         let result: Result<PeerRole, _> = serde_json::from_str(json);
         assert!(result.is_err(), "invalid role should fail deserialization");
     }
+
+    #[test]
+    fn roundtrip_create_webrtc_transport() {
+        let msg = SignalingMessage::CreateWebRtcTransport {
+            room_id: "room-1".into(),
+            peer_id: "peer-a".into(),
+            direction: TransportDirection::Send,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"create_web_rtc_transport""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::CreateWebRtcTransport { .. }));
+    }
+
+    #[test]
+    fn roundtrip_webrtc_transport_created() {
+        let msg = SignalingMessage::WebRtcTransportCreated {
+            room_id: "room-1".into(),
+            peer_id: "peer-a".into(),
+            transport_id: "transport-1".into(),
+            ice_parameters: IceParameters {
+                username_fragment: "ufrag".into(),
+                password: "pwd".into(),
+            },
+            dtls_parameters: DtlsParameters {
+                fingerprints: vec![Fingerprint {
+                    algorithm: "sha-256".into(),
+                    value: "AA:BB:CC".into(),
+                }],
+                role: "auto".into(),
+            },
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"web_rtc_transport_created""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::WebRtcTransportCreated { .. }));
+    }
+
+    #[test]
+    fn roundtrip_connect_webrtc_transport() {
+        let msg = SignalingMessage::ConnectWebRtcTransport {
+            room_id: "room-1".into(),
+            peer_id: "peer-a".into(),
+            transport_id: "transport-1".into(),
+            dtls_parameters: DtlsParameters {
+                fingerprints: vec![Fingerprint {
+                    algorithm: "sha-256".into(),
+                    value: "DD:EE:FF".into(),
+                }],
+                role: "client".into(),
+            },
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains(r#""type":"connect_web_rtc_transport""#));
+        let parsed: SignalingMessage = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed, SignalingMessage::ConnectWebRtcTransport { .. }));
+    }
+}

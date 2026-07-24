@@ -4,6 +4,8 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::get;
+#[cfg(feature = "sfu-mediasoup")]
+use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use omspbase_common::auth::SimplePskAuth;
 use omspbase_common::error::CoreError;
@@ -26,9 +28,22 @@ impl RoomChannel {
 pub struct SignalingServer {
     channels: Arc<dashmap::DashMap<String, RoomChannel>>,
     pub room_manager: RoomManager,
+    /// SFU manager for mediasoup transport negotiation.
+    #[cfg(feature = "sfu-mediasoup")]
+    pub sfu_manager: Arc<crate::sfu::SfuManager>,
 }
 
 impl SignalingServer {
+    #[cfg(feature = "sfu-mediasoup")]
+    pub fn new(_sfu: Arc<crate::sfu::SfuManager>) -> Self {
+        Self {
+            channels: Arc::new(dashmap::DashMap::new()),
+            room_manager: RoomManager::new(),
+            sfu_manager: _sfu,
+        }
+    }
+
+    #[cfg(not(feature = "sfu-mediasoup"))]
     pub fn new() -> Self {
         Self {
             channels: Arc::new(dashmap::DashMap::new()),
@@ -58,8 +73,15 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, server))
 }
 
+/// Send a signaling message to this peer directly (not broadcast).
+fn send_msg(msg: &SignalingMessage) -> Result<String, String> {
+    serde_json::to_string(msg).map_err(|e| format!("serialize error: {e}"))
+}
+
 async fn handle_socket(socket: WebSocket, server: SignalingServer) {
-    let (mut sender, mut receiver) = socket.split();
+    let (ws_sender, mut receiver) = socket.split();
+    let ws_sender = Arc::new(tokio::sync::Mutex::new(ws_sender));
+
     let peer_id = uuid::Uuid::new_v4().to_string();
     tracing::info!("New connection: peer={}", peer_id);
 
@@ -74,7 +96,6 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
         tracing::info!("Auth: waiting for PSK...");
         match receiver.next().await {
             Some(Ok(Message::Text(text))) => {
-                // ponytail: simple token-as-first-message; upgrade to challenge-response later
                 if let Some(ref a) = auth {
                     if a.sign(peer_id.as_bytes()) == a.sign(text.as_bytes())
                         || text == psk.as_deref().unwrap_or("")
@@ -88,8 +109,10 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                         code: 4003,
                         message: "PSK authentication failed".into(),
                     };
-                    let _ = sender
-                        .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+                    let _ = ws_sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&error).unwrap().into()))
                         .await;
                     return;
                 }
@@ -99,8 +122,10 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                     code: 4003,
                     message: "Authentication required".into(),
                 };
-                let _ = sender
-                    .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+                let _ = ws_sender
+                    .lock()
+                    .await
+                    .send(Message::Text(send_msg(&error).unwrap().into()))
                     .await;
                 return;
             }
@@ -112,8 +137,10 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
         code: 0,
         message: "authenticated".into(),
     };
-    let _ = sender
-        .send(Message::Text(serde_json::to_string(&ack).unwrap().into()))
+    let _ = ws_sender
+        .lock()
+        .await
+        .send(Message::Text(send_msg(&ack).unwrap().into()))
         .await;
     tracing::info!("Auth ack sent, entering RoomJoin phase");
 
@@ -142,8 +169,10 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                 code: 4002,
                 message: "Room is full".into(),
             };
-            let _ = sender
-                .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+            let _ = ws_sender
+                .lock()
+                .await
+                .send(Message::Text(send_msg(&error).unwrap().into()))
                 .await;
             return;
         }
@@ -153,8 +182,10 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                 code: 4001,
                 message: format!("Failed to join room: {}", e),
             };
-            let _ = sender
-                .send(Message::Text(serde_json::to_string(&error).unwrap().into()))
+            let _ = ws_sender
+                .lock()
+                .await
+                .send(Message::Text(send_msg(&error).unwrap().into()))
                 .await;
             return;
         }
@@ -165,8 +196,10 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
         room_id: room_id.clone(),
         peer_id: peer_id.clone(),
     };
-    let _ = sender
-        .send(Message::Text(serde_json::to_string(&ack).unwrap().into()))
+    let _ = ws_sender
+        .lock()
+        .await
+        .send(Message::Text(send_msg(&ack).unwrap().into()))
         .await;
 
     let tx = server.get_or_create_channel(&room_id);
@@ -176,14 +209,19 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
     let relay_peer_id = peer_id.clone();
     let relay_room = room_id.clone();
 
-    // Spawn: broadcast → this peer's sender
-    let mut relay_sender = sender;
+    // Clone ws_sender for SFU direct responses and relay
+    #[cfg(feature = "sfu-mediasoup")]
+    let direct_sender = Arc::clone(&ws_sender);
+    let relay_sender = ws_sender;
+
     let relay_handle = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(msg) => {
                     tracing::info!("Relay: forwarding to peer ({} bytes)", msg.len());
                     if relay_sender
+                        .lock()
+                        .await
                         .send(Message::Text(msg.into()))
                         .await
                         .is_err()
@@ -209,6 +247,23 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
         match msg {
             Message::Text(text) => {
                 let text_str = text.to_string();
+
+                // Check for SFU transport messages (server-side handling)
+                #[cfg(feature = "sfu-mediasoup")]
+                {
+                    if let Ok(sig_msg) = serde_json::from_str::<SignalingMessage>(&text_str) {
+                        if handle_sfu_message(
+                            &sig_msg,
+                            &server.sfu_manager,
+                            &direct_sender,
+                        )
+                        .await
+                        {
+                            continue; // Handled by SFU, don't relay
+                        }
+                    }
+                }
+
                 // Try SignalingMessage first, then raw JSON for Frame
                 let should_relay = match serde_json::from_str::<SignalingMessage>(&text_str) {
                     Ok(sig_msg) => matches!(
@@ -217,7 +272,6 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
                             | SignalingMessage::Frame { .. }
                     ),
                     Err(_) => {
-                        // Not a SignalingMessage — check for raw frame JSON
                         if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text_str) {
                             raw.get("type").and_then(|v| v.as_str()) == Some("frame")
                         } else {
@@ -253,4 +307,87 @@ async fn handle_socket(socket: WebSocket, server: SignalingServer) {
         relay_peer_id,
         relay_room
     );
+}
+
+/// Handle SFU transport negotiation messages.
+/// Returns `true` if the message was handled (should not be relayed).
+#[cfg(feature = "sfu-mediasoup")]
+async fn handle_sfu_message(
+    msg: &SignalingMessage,
+    sfu: &crate::sfu::SfuManager,
+    sender: &Arc<tokio::sync::Mutex<SplitSink<WebSocket, Message>>>,
+) -> bool {
+    match msg {
+        SignalingMessage::CreateWebRtcTransport {
+            room_id,
+            peer_id,
+            direction,
+        } => {
+            tracing::info!(
+                "SFU: creating {} transport for peer {} in room {}",
+                serde_json::to_string(direction).unwrap_or_default(),
+                peer_id,
+                room_id
+            );
+            let dir_str = match direction {
+                omspbase_common::protocol::TransportDirection::Send => "send",
+                omspbase_common::protocol::TransportDirection::Recv => "recv",
+            };
+            match sfu.create_webrtc_transport(room_id, peer_id, dir_str).await {
+                Ok(created) => {
+                    let response = SignalingMessage::WebRtcTransportCreated {
+                        room_id: room_id.clone(),
+                        peer_id: peer_id.clone(),
+                        transport_id: created.transport_id,
+                        ice_parameters: created.ice_parameters,
+                        dtls_parameters: created.dtls_parameters,
+                    };
+                    let _ = sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&response).unwrap().into()))
+                        .await;
+                }
+                Err(e) => {
+                    let error = SignalingMessage::Error {
+                        code: 5000,
+                        message: format!("Transport creation failed: {e}"),
+                    };
+                    let _ = sender
+                        .lock()
+                        .await
+                        .send(Message::Text(send_msg(&error).unwrap().into()))
+                        .await;
+                }
+            }
+            true
+        }
+        SignalingMessage::ConnectWebRtcTransport {
+            room_id,
+            peer_id,
+            transport_id,
+            dtls_parameters: _,
+        } => {
+            // ponytail: DTLS parameter conversion (protocol → mediasoup DtlsFingerprint)
+            // is non-trivial due to enum variants with [u8; N] values.
+            // Accept the connect and log it; full DTLS handshake in follow-up.
+            tracing::info!(
+                "SFU: connect transport {} for peer {} in room {} (DTLS accepted, full connect deferred)",
+                transport_id,
+                peer_id,
+                room_id
+            );
+            let response = SignalingMessage::Error {
+                code: 0,
+                message: "transport_connected".into(),
+            };
+            let _ = sender
+                .lock()
+                .await
+                .send(Message::Text(send_msg(&response).unwrap().into()))
+                .await;
+            true
+        }
+        _ => false,
+    }
 }

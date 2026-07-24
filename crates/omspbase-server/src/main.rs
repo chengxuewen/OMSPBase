@@ -3,8 +3,6 @@ use std::process;
 // Binary depends on omspbase-server lib (same package).
 use omspbase_server::config;
 use omspbase_server::monitor;
-use omspbase_server::relay;
-use omspbase_server::sfu;
 use omspbase_server::signaling;
 
 #[tokio::main]
@@ -44,22 +42,24 @@ async fn main() {
     };// ponytail: fallback to defaults for E2E, add config wizard when needed
 
     // Create the signaling server (shared state for WebSocket rooms)
-    let signaling_server = signaling::SignalingServer::new();
+    #[cfg(feature = "sfu-mediasoup")]
+    let signaling_server = {
+        use std::sync::Arc;
+        use omspbase_server::sfu;
 
-    // Create the WebRTC relay (stub unless `webrtc` feature is enabled)
-    let _relay = relay::Relay::new();
-
-    // Create SFU manager (stub unless `sfu-mediasoup` feature is enabled)
-    let _sfu_manager = match sfu::SfuManager::new().await {
-        Ok(m) => {
-            tracing::info!("SFU manager initialized (mediasoup)");
-            Some(m)
-        }
-        Err(e) => {
-            tracing::info!("SFU manager skipped: {e}");
-            None
+        match sfu::SfuManager::new().await {
+            Ok(m) => {
+                tracing::info!("SFU manager initialized (mediasoup)");
+                signaling::SignalingServer::new(Arc::new(m))
+            }
+            Err(e) => {
+                tracing::info!("SFU manager skipped: {e}");
+                panic!("sfu-mediasoup feature enabled but worker failed: {e}");
+            }
         }
     };
+    #[cfg(not(feature = "sfu-mediasoup"))]
+    let signaling_server = signaling::SignalingServer::new();
 
     // Build axum router
     let signaling_router = signaling::signaling_router(signaling_server.clone());
