@@ -3021,3 +3021,19 @@ webrtc-rs 视频管线完整:
 - #5 房间: 已完成 — RoomConfig struct + default_room_id ✅
 
 **关联**: D182
+**关联**: D183
+
+---
+
+## D185: Docker + CI for mediasoup SFU
+
+**状态**: ✅
+**日期**: 2026-07-24
+
+**决策**: 建立 Docker 和 CI 基础设施支持 mediasoup SFU 开发。
+- P1: Dockerfile (多阶段) + docker-compose.yml
+- P2: sfu-mediasoup feature flag + test-mediasoup CI job
+- P3: DevContainer + 文档 (待定)
+- Cargo.lock 必须与依赖变更一同提交 (约束规则)
+
+**关联**: D184, D186
